@@ -20,19 +20,12 @@ const {
 
 
 // get user log id status
-router.get('/user_logs/:user_log_id/status', cekJWT, async (req, res) => {
-    let hasil = ''
+router.get('/user_logs/:user_log_id/status', async (req, res) => {
     const resu = await firedb.collection('user_logs').doc(`${req.params.user_log_id}`).get()
     
-    resu.forEach((doc) => {
-        hasil = doc.data().status
-    });
-
-
     return res.status(200).json({
         'message': 'User Logs status',
-        'status': hasil,
-        'status': 'Success'
+        'status': resu.data().status,
     });
 });
 
