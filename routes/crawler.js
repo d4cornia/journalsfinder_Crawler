@@ -780,7 +780,7 @@ async function scienceDirectCrawl(browser, page, keyword, crawlInfo) {
                         }
                     }
                     if (ctr == 0) {
-                        content += spl[0]
+                        content += (spl[0] + '. ' + spl[1])
                     }
                     content += '...'
                     
@@ -959,7 +959,7 @@ async function ieeeCrawl(browser, page, keyword, crawlInfo) {
                     }
                 }
                 if (ctr == 0) {
-                    content += spl[0]
+                    content += (spl[0] + '. ' + spl[1])
                 }
                 content += '...'
 
