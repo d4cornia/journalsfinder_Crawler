@@ -91,7 +91,6 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
         // crawl bedasarkan crawl opt
         if (crawlerOpt === 0) {
             // scholar crawl
-            MAX_CRAWL_DATA = 30
             let crawlInfo = {
                 search_res_links: [],
                 pageNum : 1,
@@ -110,7 +109,6 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
             results = await googleScholarCrawl(browser, page, keyword, crawlInfo)
         } else if (crawlerOpt === 1) {
             // crawler SCD
-            MAX_CRAWL_DATA = 40
             let date = ''
             if(yearStart !== '-' && yearEnd !== '-') {
                 date = yearStart + '-' + yearEnd
@@ -128,11 +126,9 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
                 simpleKeyword: simpleKeyword
             }
     
-            results = await scienceDirectCrawl(browser, page, keyword, crawlInfo)  
+            results = await scienceDirectCrawl(page, keyword, crawlInfo)  
         } else if (crawlerOpt === 2) {
             // IEEE Crawler
-            MAX_CRAWL_DATA = 25
-            
             date = ''
             if(yearStart !== '-' && yearEnd !== '-') {
                 date = `&ranges=${yearStart}_${yearEnd}_Year`
@@ -150,11 +146,9 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
                 simpleKeyword: simpleKeyword
             }
 
-            results = await ieeeCrawl(browser, page, keyword, crawlInfo)
+            results = await ieeeCrawl(page, keyword, crawlInfo)
         } else if (crawlerOpt === 3) {
             // ACD Crawl
-            MAX_CRAWL_DATA = 30
-
             if (ogKeyword === '-') {
                 // search biasa
                 keyword = 'q=' + keyword
@@ -179,7 +173,7 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
                 date: date
             }
 
-            results = await academicCrawl(browser, page, keyword, crawlInfo)
+            results = await academicCrawl(page, keyword, crawlInfo)
         }
     
         await browser.close()    
@@ -217,7 +211,7 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
     console.log('"' + sfKeyword + '"')
 
     // journal valuation
-    journalsEvaluation(results, cosinusKeyword, simpleKeyword, sfKeyword, crawlerOpt)
+    journalsEvaluation(results, cosinusKeyword, simpleKeyword, sfKeyword, searchFactors, crawlerOpt)
 
     // ranking with KMA
     results = KMA(results, results.length, Math.ceil(results.length / 2) + 5, 100, 5, crawlerOpt) 
@@ -326,9 +320,9 @@ router.post('/searchResult', cekJWT, async (req, res) => {
 
 
 // scholar crawler SETUP
-const MAX_RESET = 10
+const MAX_RESET = 5
 const MAX_PAGE = 10
-let MAX_CRAWL_DATA = 25
+let MAX_CRAWL_DATA = 30
 const POSSIBLE_PDF_PLACEMENT = [
     'PDF',
     'pdf',
@@ -633,561 +627,508 @@ const POSSIBLE_FULL_TEXT_REMOVAL = [
     'CRediT authorship'
 ]
 const MAX_PAGE_SCD = 3 // per page 100
+let MAX_CRAWL_DATA_SCD = 40
 
 // target 'https://www.sciencedirect.com'
-async function scienceDirectCrawl(browser, page, keyword, crawlInfo) {
-    console.log("Page num : " + crawlInfo.pageNum)
+async function scienceDirectCrawl(page, keyword, crawlInfo) {
+    while (crawlInfo.pageNum < MAX_PAGE_SCD && crawlInfo.attempt < MAX_RESET) {
+        console.log("Page num : " + crawlInfo.pageNum)
+        
+        await Promise.all([
+            page.waitForNavigation(),
+            page.goto(`https://www.sciencedirect.com/search?qs=${keyword}&date=${crawlInfo.date}&accessTypes=openaccess&show=100&offset=${((crawlInfo.pageNum * 100) - 100)}`, {
+                waitUntil: 'domcontentloaded'
+            }),
+        ])
     
-    await Promise.all([
-        page.waitForNavigation(),
-        page.goto(`https://www.sciencedirect.com/search?qs=${keyword}&date=${crawlInfo.date}&accessTypes=openaccess&show=100&offset=${((crawlInfo.pageNum * 100) - 100)}`, {
-            waitUntil: 'domcontentloaded'
-        }),
-    ])
-
-    try {
-        await page.waitForSelector('ol.search-result-wrapper > li', {
-            timeout: 5000
-        })
-    } catch (e) {
-        // empty search
-        return crawlInfo.search_res_links
-    }
-
-    const pageURL = page.url()
-
-    let searchResRaw = ''
-    try{
-        searchResRaw = await page.$$eval("ol.search-result-wrapper > li", (results) => {
-            const temp = []
-            for (let i = 0; i < results.length; i++) {
-                // dapatin html
-                temp.push(results[i].innerHTML + "")
-            }
-            return temp
-        })
-    }catch (e) {
-        console.log("error load html page : " + e)
-        console.log("reseting page : " + crawlInfo.pageNum)
-        // try to reset this page
-        await browser.close()
-        browser = await puppeteer.launch({
-            'args' : [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--start-maximized'
-            ],
-            defaultViewport: null,
-            headless: true
-        })
-        page = await browser.newPage()
-        crawlInfo.attempt++
-
-        return scienceDirectCrawl(browser, page, keyword, crawlInfo)
-    }
-
-    for (let i = 0; i < searchResRaw.length; i++) {
-        if (crawlInfo.search_res_links.length >= MAX_CRAWL_DATA) {
+        try {
+            await page.waitForSelector('ol.search-result-wrapper > li', {
+                timeout: 5000
+            })
+        } catch (e) {
+            // empty search
             return crawlInfo.search_res_links
         }
-        const $ = await cheerio.load(searchResRaw[i] + "")
-
-        // prevent yang bukan journal
-        if (!$('.login-message-container').text().includes('personalized search experience')) {
-            const detailJournalPath = $("a.result-list-title-link").attr("href")
-            console.log(detailJournalPath)
     
-            // obtaining journal info detail
-            try {
-                // masuk ke detail journal
-                await page.goto(pageURL.substring(0, pageURL.indexOf('/', 10)) + detailJournalPath, {
-                    timeout: 8000,
-                    waitUntil: 'load'
-                })
-
-                await sleep(1250)
+        const pageURL = page.url()
     
-                const body = await page.$eval(`.Article`, (result) => {
-                    return result.innerHTML
-                })
-                
-                const jq = await cheerio.load(body + "")
-    
-                if (!jq(".PdfEmbed").text()) {
-                    const tempAuthors = $(".Authors").text()
-                    let authors = tempAuthors.charAt(0)
-                    for (let i = 1; i < tempAuthors.length; i++) {
-                        if (tempAuthors.charAt(i).toUpperCase() === tempAuthors.charAt(i) && tempAuthors.charAt(i - 1) !== ' ' && tempAuthors.charAt(i) !== ' ' && tempAuthors.charAt(i - 1).toUpperCase() !== tempAuthors.charAt(i - 1)) {
-                            authors += ', '
-                        } 
-                        authors += tempAuthors.charAt(i)
-                    }
-        
-                    const publishYear = $(".srctitle-date-fields").text().slice(-4)
-    
-                    const tempKey = jq(".keywords-section").text()
-                    
-                    let keywords = tempKey.charAt(0)
-                    for (let i = 1; i < tempKey.length; i++) {
-                        if (tempKey.charAt(i).toUpperCase() === tempKey.charAt(i) && tempKey.charAt(i - 1) !== ' ' && tempKey.charAt(i - 1).toUpperCase() !== tempKey.charAt(i - 1)) {
-                            keywords += ' '
-                        } 
-                        keywords += tempKey.charAt(i)
-                    }
-                    keywords = keywords.replaceAll('Keywords', '')
-                    keywords = keywords.replaceAll('(', '')
-                    keywords = keywords.replaceAll(')', '')
-                    keywords = keywords.replaceAll("'", '')
-                    keywords = keywords.replace(/\s\s+/g, ' ')
-                    
-                    const citedCount = jq("#citing-articles-header").text().substring(jq("#citing-articles-header").text().indexOf('(') + 1, jq("#citing-articles-header").text().indexOf(')'))
-        
-                    let fullText = jq("#body > div").text()
-                    let ctr = -1
-                    for (let i = 0; i < POSSIBLE_FULL_TEXT_REMOVAL.length; i++) {
-                        ctr = fullText.indexOf(POSSIBLE_FULL_TEXT_REMOVAL[i] + '')
-                        if(ctr != -1) {
-                            break
-                        }
-                    }
-                    if(ctr > 0) {
-                        fullText.length = ctr
-                    }
-    
-                    fullText = fullText.replaceAll('\n', ' ')
-                    fullText = fullText.replaceAll('\t', ' ')
-                    fullText = fullText.replaceAll(',', ' ')
-                    fullText = fullText.replaceAll('1. Introduction', '')
-                    fullText = fullText.replaceAll('.', ' ')
-                    fullText = fullText.replaceAll(':', '')
-                    fullText = fullText.replaceAll('(', '')
-                    fullText = fullText.replaceAll(')', '')
-                    fullText = fullText.replaceAll("'", '')
-                    fullText = fullText.replace(/\s\s+/g, ' ')
-
-                    const abstract = jq(".abstract.author > div > p").text()
-                    const spl = abstract.split('.')
-                    let content = ''
-                    ctr = 0
-                    for (let i = 0; i < spl.length && ctr < 2; i++) {
-                        if(spl[i].toLowerCase().includes(crawlInfo.simpleKeyword.toLowerCase())) {
-                            ctr++ 
-                            content += '...' + spl[i]
-                        }
-                    }
-                    if (ctr == 0) {
-                        content += (spl[0] + '. ' + spl[1])
-                    }
-                    content += '...'
-                    
-                    if (abstract.length > 0 && fullText.length > 0) {
-                        crawlInfo.search_res_links.push({
-                            index: i + ((crawlInfo.pageNum * 100) - 100),
-                            g_id: detailJournalPath.slice(-17),
-                            title: jq(".title-text").text(),
-                            abstract: abstract,
-                            keywords: keywords,
-                            full_text: fullText,
-                            references_count: jq(".reference").length,
-                            content: content,
-                            cited_count: citedCount,
-                            authors: authors,
-                            publisher: 'Elsevier',
-                            publish_year: publishYear,
-                            site: 'Elsevier',
-                            free: true,
-                            link: jq(".doi").text(),
-                            pdf: pageURL.substring(0, pageURL.indexOf('/', 10)) + jq("a:contains('PDF')").attr("href"),
-                            value: 0
-                        })
-                    } else {
-                        console.log('abs or full not full')
-                    }
-                } else {
-                    console.log('embed')
+        let searchResRaw = ''
+        try{
+            searchResRaw = await page.$$eval("ol.search-result-wrapper > li", (results) => {
+                const temp = []
+                for (let i = 0; i < results.length; i++) {
+                    // dapatin html
+                    temp.push(results[i].innerHTML + "")
                 }
-            } catch (error) {
-                console.log("error obtaining journal info i-" + (i + 1))
-                console.log(error)
-            }
-        }
-    }
+                return temp
+            })
+
+            for (let i = 0; i < searchResRaw.length; i++) {
+                if (crawlInfo.search_res_links.length === MAX_CRAWL_DATA_SCD) {
+                    return crawlInfo.search_res_links
+                }
+                const $ = await cheerio.load(searchResRaw[i] + "")
+        
+                // prevent yang bukan journal
+                if (!$('.login-message-container').text().includes('personalized search experience')) {
+                    const detailJournalPath = $("a.result-list-title-link").attr("href")
+                    console.log(detailJournalPath)
+            
+                    // obtaining journal info detail
+                    try {
+                        // masuk ke detail journal
+                        await Promise.all([
+                            page.waitForNavigation(),
+                            page.goto(pageURL.substring(0, pageURL.indexOf('/', 10)) + detailJournalPath, {
+                                timeout: 5000,
+                                waitUntil: 'domcontentloaded'
+                            }), page.waitForSelector('.Body > div > section', {
+                                timeout: 3000
+                            })
+                        ])
+            
+                        const body = await page.$eval(`.Article`, (result) => {
+                            return result.innerHTML
+                        })
+                        
+                        const jq = await cheerio.load(body + "")
+
+                        const tempAuthors = $(".Authors").text()
+                        let authors = tempAuthors.charAt(0)
+                        for (let i = 1; i < tempAuthors.length; i++) {
+                            if (tempAuthors.charAt(i).toUpperCase() === tempAuthors.charAt(i) && tempAuthors.charAt(i - 1) !== ' ' && tempAuthors.charAt(i) !== ' ' && tempAuthors.charAt(i - 1).toUpperCase() !== tempAuthors.charAt(i - 1)) {
+                                authors += ', '
+                            } 
+                            authors += tempAuthors.charAt(i)
+                        }
+            
+                        const publishYear = $(".srctitle-date-fields").text().slice(-4)
+        
+                        const tempKey = jq(".keywords-section").text()
+                        
+                        let keywords = tempKey.charAt(0)
+                        for (let i = 1; i < tempKey.length; i++) {
+                            if (tempKey.charAt(i).toUpperCase() === tempKey.charAt(i) && tempKey.charAt(i - 1) !== ' ' && tempKey.charAt(i - 1).toUpperCase() !== tempKey.charAt(i - 1)) {
+                                keywords += ' '
+                            } 
+                            keywords += tempKey.charAt(i)
+                        }
+                        keywords = keywords.replaceAll('Keywords', '')
+                        keywords = keywords.replaceAll('(', '')
+                        keywords = keywords.replaceAll(')', '')
+                        keywords = keywords.replaceAll("'", '')
+                        keywords = keywords.replace(/\s\s+/g, ' ')
+                        
+                        const citedCount = jq("#citing-articles-header").text().substring(jq("#citing-articles-header").text().indexOf('(') + 1, jq("#citing-articles-header").text().indexOf(')'))
+            
+                        let fullText = jq("#body > div").text()
+                        let ctr = -1
+                        for (let i = 0; i < POSSIBLE_FULL_TEXT_REMOVAL.length; i++) {
+                            ctr = fullText.indexOf(POSSIBLE_FULL_TEXT_REMOVAL[i] + '')
+                            if(ctr != -1) {
+                                break
+                            }
+                        }
+                        if(ctr > 0) {
+                            fullText.length = ctr
+                        }
+        
+                        fullText = fullText.replaceAll('\n', ' ')
+                        fullText = fullText.replaceAll('\t', ' ')
+                        fullText = fullText.replaceAll(',', ' ')
+                        fullText = fullText.replaceAll('1. Introduction', '')
+                        fullText = fullText.replaceAll('.', ' ')
+                        fullText = fullText.replaceAll(':', '')
+                        fullText = fullText.replaceAll('(', '')
+                        fullText = fullText.replaceAll(')', '')
+                        fullText = fullText.replaceAll("'", '')
+                        fullText = fullText.replace(/\s\s+/g, ' ')
     
-    if(crawlInfo.pageNum < MAX_PAGE_SCD) {
-        // next page
-        crawlInfo.pageNum++
-        return await scienceDirectCrawl(browser, page, keyword, crawlInfo)
+                        const abstract = jq(".abstract.author > div > p").text()
+                        const spl = abstract.split('.')
+                        let content = ''
+                        ctr = 0
+                        for (let i = 0; i < spl.length && ctr < 2; i++) {
+                            if(spl[i].toLowerCase().includes(crawlInfo.simpleKeyword.toLowerCase())) {
+                                ctr++ 
+                                content += '...' + spl[i]
+                            }
+                        }
+                        if (ctr == 0) {
+                            content += (spl[0] + '. ' + spl[1])
+                        }
+                        content += '...'
+                        
+                        if (abstract.length > 0 && fullText.length > 0) {
+                            crawlInfo.search_res_links.push({
+                                index: i + ((crawlInfo.pageNum * 100) - 100),
+                                g_id: detailJournalPath.slice(-17),
+                                title: jq(".title-text").text(),
+                                abstract: abstract,
+                                keywords: keywords,
+                                full_text: fullText,
+                                references_count: jq(".reference").length,
+                                content: content,
+                                cited_count: citedCount,
+                                authors: authors,
+                                publisher: 'Elsevier',
+                                publish_year: publishYear,
+                                site: 'Elsevier',
+                                free: true,
+                                link: jq(".doi").text(),
+                                pdf: pageURL.substring(0, pageURL.indexOf('/', 10)) + jq("a:contains('PDF')").attr("href"),
+                                value: 0
+                            })
+                        }
+                    } catch (error) {
+                        console.log("error obtaining journal info i-" + (i + 1))
+                        console.log(error)
+                    }
+                }
+            }
+            
+            // next page
+            crawlInfo.pageNum++
+        }catch (e) {
+            console.log("error load html page : " + e)
+            console.log("reseting page : " + crawlInfo.pageNum)
+            crawlInfo.attempt++
+        }
     }
 
     return crawlInfo.search_res_links
 }
-
 
 // ieee crawler setup
 const MAX_PAGE_IEEE = 10 // per page 10
+let MAX_CRAWL_DATA_IEEE = 25
 
 // target 'https://ieeexplore.ieee.org'
-async function ieeeCrawl(browser, page, keyword, crawlInfo) {
-    console.log("Page num : " + crawlInfo.pageNum)
-    
-    await Promise.all([
-        page.waitForNavigation(),
-        page.goto(`https://ieeexplore.ieee.org/search/searchresult.jsp?queryText=${keyword}&highlight=true&returnType=SEARCH&matchPubs=true&rowsPerPage=10&pageNumber=${crawlInfo.pageNum}&openAccess=true&refinements=ContentType:Journals${crawlInfo.date}&returnFacets=ALL`, {
-            waitUntil: 'domcontentloaded',
-            timeout: 20000
-        }),
-    ])
+async function ieeeCrawl(page, keyword, crawlInfo) {
+    while (crawlInfo.pageNum < MAX_PAGE_IEEE && crawlInfo.attempt < MAX_RESET) {
+        console.log("Page num : " + crawlInfo.pageNum)
 
-    try {
-        await page.waitForSelector('.List-results-items', {
-            timeout: 5000
-        })
-    } catch (e) {
-        // empty search
-        return crawlInfo.search_res_links
-    }
+        await Promise.all([
+            page.waitForNavigation(),
+            page.goto(`https://ieeexplore.ieee.org/search/searchresult.jsp?queryText=${keyword}&highlight=true&returnType=SEARCH&matchPubs=true&rowsPerPage=10&pageNumber=${crawlInfo.pageNum}&openAccess=true&refinements=ContentType:Journals${crawlInfo.date}&returnFacets=ALL`, {
+                waitUntil: 'domcontentloaded',
+                timeout: 20000
+            }),
+        ])
 
-    const pageURL = page.url()
-
-    let searchResRaw = ''
-    try{
-        searchResRaw = await page.$$eval(".List-results-items", (results) => {
-            const temp = []
-            for (let i = 0; i < results.length; i++) {
-                // dapatin html
-                temp.push(results[i].innerHTML + "")
-            }
-            return temp
-        })
-    }catch (e) {
-        console.log("error load html page : " + e)
-        console.log("reseting page : " + crawlInfo.pageNum)
-        // try to reset this page
-        await browser.close()
-        browser = await puppeteer.launch({
-            'args' : [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--start-maximized'
-            ],
-            defaultViewport: null,
-            headless: true
-        })
-        page = await browser.newPage()
-        crawlInfo.attempt++
-
-        return ieeeCrawl(browser, page, keyword, crawlInfo)
-    }
-
-    for (let i = 0; i < searchResRaw.length; i++) {
-        if (crawlInfo.search_res_links.length >= MAX_CRAWL_DATA) {
+        try {
+            await page.waitForSelector('.List-results-items', {
+                timeout: 5000
+            })
+        } catch (e) {
+            // empty search
             return crawlInfo.search_res_links
         }
-        const $ = await cheerio.load(searchResRaw[i] + "")
 
-        const detailJournalPath = $("a:contains('HTML')").attr("href")
-        console.log(detailJournalPath)
+        const pageURL = page.url()
 
-        if(detailJournalPath !== undefined) {
-            try {
-                // masuk ke detail journal
-                await Promise.all([
-                    page.waitForNavigation(),
-                    page.goto(pageURL.substring(0, pageURL.indexOf('/', 10)) + detailJournalPath + 'references#references', {
-                        timeout: 15000,
-                        waitUntil: 'domcontentloaded'
-                    }),
-                    page.waitForSelector('.document-main'),
-                ])
-
-                let body = await page.$eval(`.document-main`, (result) => {
-                    return result.innerHTML
-                })
-                
-                let jq = await cheerio.load(body + "")
-
-                const referenceCount = Math.ceil(jq("div.reference-container").length / 2)
-
-                await page.click("#keywords-header", {clickCount:1})
-    
-                body = await page.$eval(`.document-main`, (result) => {
-                    return result.innerHTML
-                })
-                
-                jq = await cheerio.load(body + "")
-
-                let keywords = jq("li:contains('Author')").text()
-                if (keywords.length === 0) {
-                    keywords = jq(".doc-keywords-list-item").text()
+        let searchResRaw = ''
+        try{
+            searchResRaw = await page.$$eval(".List-results-items", (results) => {
+                const temp = []
+                for (let i = 0; i < results.length; i++) {
+                    // dapatin html
+                    temp.push(results[i].innerHTML + "")
                 }
-                keywords = keywords.replaceAll('Author', '')
-                keywords = keywords.replaceAll('IEEE', '')
-                keywords = keywords.replaceAll('Keywords', '')
-                keywords = keywords.replaceAll(',', ' ')
-                keywords = keywords.replaceAll("'", '')
-                keywords = keywords.replace(/\s\s+/g, ' ')
+                return temp
+            })
 
-                const id = detailJournalPath.substring(10, 17)
-
-                let abstract = jq(".abstract-text.row").text()
-                abstract = abstract.replaceAll('Abstract', '')
-                abstract = abstract.replaceAll(':', '')
-                abstract = abstract.replaceAll('\n', '')
-                abstract = abstract.replaceAll('(', '')
-                abstract = abstract.replaceAll(')', '')
-                abstract = abstract.replaceAll("'", '')
-
-                const spl = abstract.split('.')
-                let content = ''
-                let ctr = 0
-                for (let i = 0; i < spl.length && ctr < 2; i++) {
-                    if(spl[i].toLowerCase().includes(crawlInfo.simpleKeyword.toLowerCase())) {
-                        ctr++ 
-                        content += '...' + spl[i]
+            for (let i = 0; i < searchResRaw.length; i++) {
+                if (crawlInfo.search_res_links.length === MAX_CRAWL_DATA_IEEE) {
+                    return crawlInfo.search_res_links
+                }
+                const $ = await cheerio.load(searchResRaw[i] + "")
+    
+                const detailJournalPath = $("a:contains('HTML')").attr("href")
+                console.log(detailJournalPath)
+    
+                if(detailJournalPath !== undefined) {
+                    try {
+                        // masuk ke detail journal
+                        await Promise.all([
+                            page.waitForNavigation(),
+                            page.goto(pageURL.substring(0, pageURL.indexOf('/', 10)) + detailJournalPath + 'references#references', {
+                                timeout: 10000,
+                                waitUntil: 'domcontentloaded'
+                            }),
+                            page.waitForSelector('.document-main', {
+                                timeout: 10000
+                            }),
+                        ])
+    
+                        let body = await page.$eval(`.document-main`, (result) => {
+                            return result.innerHTML
+                        })
+                        
+                        let jq = await cheerio.load(body + "")
+    
+                        const referenceCount = Math.ceil(jq("div.reference-container").length / 2)
+    
+                        await page.click("#keywords-header", {clickCount:1})
+            
+                        body = await page.$eval(`.document-main`, (result) => {
+                            return result.innerHTML
+                        })
+                        
+                        jq = await cheerio.load(body + "")
+    
+                        let keywords = jq("li:contains('Author')").text()
+                        if (keywords.length === 0) {
+                            keywords = jq(".doc-keywords-list-item").text()
+                        }
+                        keywords = keywords.replaceAll('Author', '')
+                        keywords = keywords.replaceAll('IEEE', '')
+                        keywords = keywords.replaceAll('Keywords', '')
+                        keywords = keywords.replaceAll(',', ' ')
+                        keywords = keywords.replaceAll("'", '')
+                        keywords = keywords.replace(/\s\s+/g, ' ')
+    
+                        const id = detailJournalPath.substring(10, 17)
+    
+                        let abstract = jq(".abstract-text.row").text()
+                        abstract = abstract.replaceAll('Abstract', '')
+                        abstract = abstract.replaceAll(':', '')
+                        abstract = abstract.replaceAll('\n', '')
+                        abstract = abstract.replaceAll('(', '')
+                        abstract = abstract.replaceAll(')', '')
+                        abstract = abstract.replaceAll("'", '')
+    
+                        const spl = abstract.split('.')
+                        let content = ''
+                        let ctr = 0
+                        for (let i = 0; i < spl.length && ctr < 2; i++) {
+                            if(spl[i].toLowerCase().includes(crawlInfo.simpleKeyword.toLowerCase())) {
+                                ctr++ 
+                                content += '...' + spl[i]
+                            }
+                        }
+                        if (ctr == 0) {
+                            content += (spl[0] + '. ' + spl[1])
+                        }
+                        content += '...'
+    
+                        let authors = $('p.author').text()
+                        authors = authors.replaceAll(';', ', ')
+    
+                        let fullText = ""
+                        for (let i = 0; i < 20; i++) {
+                            fullText += jq("#article > #sec" + (i + 1)).text()
+                        }
+                        fullText = fullText.replaceAll('\n', ' ')
+                        fullText = fullText.replaceAll('\t', '')
+                        fullText = fullText.replace(/section/gi, '')
+                        fullText = fullText.replaceAll('.', ' ')
+                        fullText = fullText.replaceAll(',', ' ')
+                        fullText = fullText.replaceAll(';', ' ')
+                        fullText = fullText.replaceAll('(', '')
+                        fullText = fullText.replaceAll(')', '')
+                        fullText = fullText.replaceAll("'", '')
+                        fullText = fullText.replace(/\s\s+/g, ' ')
+    
+                        let publishYear = jq(".doc-abstract-pubdate").text().slice(-5)
+                        publishYear = publishYear.replaceAll(' ', '')
+                        
+                        if (abstract.length > 0 && fullText.length > 0) {
+                            crawlInfo.search_res_links.push({
+                                index: i + ((crawlInfo.pageNum * 10) - 10),
+                                g_id: id,
+                                title: jq(".document-title").text(),
+                                abstract: abstract,
+                                keywords: keywords,
+                                full_text: fullText,
+                                references_count: referenceCount,
+                                content: content,
+                                cited_count: jq(".document-banner-metric-count").first().text(),
+                                authors: authors,
+                                publisher: 'IEEE',
+                                publish_year: publishYear,
+                                site: 'ieeexplore.ieee.org',
+                                free: true,
+                                link: jq(".stats-document-abstract-doi > a").attr("href"),
+                                pdf: pageURL.substring(0, pageURL.indexOf('/', 10)) + jq("a:contains('PDF')").attr("href"),
+                                value: 0
+                            })
+                        }
+                    } catch (e) {
+                        console.log('error load detail : ' + (i + 1))
+                        console.log(e)
                     }
                 }
-                if (ctr == 0) {
-                    content += (spl[0] + '. ' + spl[1])
-                }
-                content += '...'
-
-                let authors = $('p.author').text()
-                authors = authors.replaceAll(';', ', ')
-
-                let fullText = ""
-                for (let i = 0; i < 20; i++) {
-                    fullText += jq("#article > #sec" + (i + 1)).text()
-                }
-                fullText = fullText.replaceAll('\n', ' ')
-                fullText = fullText.replaceAll('\t', '')
-                fullText = fullText.replace(/section/gi, '')
-                fullText = fullText.replaceAll('.', ' ')
-                fullText = fullText.replaceAll(',', ' ')
-                fullText = fullText.replaceAll(';', ' ')
-                fullText = fullText.replaceAll('(', '')
-                fullText = fullText.replaceAll(')', '')
-                fullText = fullText.replaceAll("'", '')
-                fullText = fullText.replace(/\s\s+/g, ' ')
-
-                let publishYear = jq(".doc-abstract-pubdate").text().slice(-5)
-                publishYear = publishYear.replaceAll(' ', '')
-                
-                if (abstract.length > 0 && fullText.length > 0) {
-                    crawlInfo.search_res_links.push({
-                        index: i + ((crawlInfo.pageNum * 10) - 10),
-                        g_id: id,
-                        title: jq(".document-title").text(),
-                        abstract: abstract,
-                        keywords: keywords,
-                        full_text: fullText,
-                        references_count: referenceCount,
-                        content: content,
-                        cited_count: jq(".document-banner-metric-count").first().text(),
-                        authors: authors,
-                        publisher: 'IEEE',
-                        publish_year: publishYear,
-                        site: 'ieeexplore.ieee.org',
-                        free: true,
-                        link: jq(".stats-document-abstract-doi > a").attr("href"),
-                        pdf: pageURL.substring(0, pageURL.indexOf('/', 10)) + jq("a:contains('PDF')").attr("href"),
-                        value: 0
-                    })
-                }
-            }catch (e) {
-                console.log('error load detail : ' + (i + 1))
-                console.log(e)
             }
+            
+            // next page
+            crawlInfo.pageNum++
+        } catch (e) {
+            console.log("error load html page : " + e)
+            console.log("reseting page : " + crawlInfo.pageNum)
+            crawlInfo.attempt++
         }
-    }
-
-    
-    if(crawlInfo.pageNum < MAX_PAGE_IEEE) {
-        // next page
-        crawlInfo.pageNum++
-        return await ieeeCrawl(browser, page, keyword, crawlInfo)
     }
 
     return crawlInfo.search_res_links
 }
 
-
 // ACD crawler setup
 const MAX_PAGE_ACD = 10 // per page 20
-
-async function recaptchaSolverACD (browser, page, keyword, crawlInfo) {
-    try{
-        if(crawlInfo.attempt == MAX_RESET) {
-            return "Reach Maximum Callback Reset"
-        }
-        const recaptcha = await page.$eval(`body`, (result) => {
-            return result.innerHTML
-        })
-        const $ = await cheerio.load(recaptcha + "")
-
-        if ($('.explanation-message').text().length > 0) {
-            // reset
-            crawlInfo.attempt++
-
-            return academicCrawl(browser, page, keyword, crawlInfo)
-        }
-    } catch (e) {
-        console.log("error recaptcha : " + e)
-    }
-}
+let MAX_CRAWL_DATA_ACD = 25
 
 // target 'https://academic.oup.com'
-async function academicCrawl(browser, page, keyword, crawlInfo) {
-    console.log("Page num : " + crawlInfo.pageNum)
+async function academicCrawl(page, keyword, crawlInfo) {
+    while (crawlInfo.pageNum < MAX_PAGE_ACD && crawlInfo.attempt < MAX_RESET) {
+        console.log("Page num : " + crawlInfo.pageNum)
 
-    await page.goto(`https://academic.oup.com/journals/search-results?${keyword}&allJournals=1&f_ContentType=Journal+Article&fl_SiteID=5567&access_openaccess=true&page=${crawlInfo.pageNum}&${crawlInfo.date}`, {
-        waitUntil: 'domcontentloaded'
-    })
+        await Promise.all([
+            page.waitForNavigation(),
+            page.goto(`https://academic.oup.com/journals/search-results?${keyword}&allJournals=1&f_ContentType=Journal+Article&fl_SiteID=5567&access_openaccess=true&page=${crawlInfo.pageNum}&${crawlInfo.date}`, {
+                waitUntil: 'domcontentloaded'
+            }),
+            sleep(300)
+        ])
 
-    await sleep(250)
+        try{
+            // recaptcha resolver
+            const recaptcha = await page.$eval(`body`, (result) => {
+                return result.innerHTML
+            })
+            const dol = await cheerio.load(recaptcha + "")
+            
+            if (dol('.explanation-message').text().length === 0) {
+                const pageURL = page.url()
 
-    await recaptchaSolverACD (browser, page, keyword, crawlInfo)
-
-    const pageURL = page.url()
-    
-    let searchResRaw = ''
-    try{
-        searchResRaw = await page.$$eval(".sr-list.al-article-box", (results) => {
-            const temp = []
-            for (let i = 0; i < results.length; i++) {
-                // dapatin html
-                temp.push(results[i].innerHTML + "")
-            }
-            return temp
-        })
-    }catch (e) {
-        console.log("error load html page : " + e)
-        console.log("reseting page : " + crawlInfo.pageNum)
-        // try to reset this page
-        await browser.close()
-        browser = await puppeteer.launch({
-            'args' : [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--start-maximized'
-            ],
-            defaultViewport: null,
-            headless: true
-        })
-        page = await browser.newPage()
-        crawlInfo.attempt++
-
-        return academicCrawl(browser, page, keyword, crawlInfo)
-    }
-
-    if(searchResRaw.length === 0) {
-        return crawlInfo.search_res_links
-    }
-
-    for (let i = 0; i < searchResRaw.length; i++) {
-        if (crawlInfo.search_res_links.length >= MAX_CRAWL_DATA) {
-            return crawlInfo.search_res_links
-        }
-        const $ = await cheerio.load(searchResRaw[i] + "")
-
-        const detailJournalPath = $(".article-link").attr("href")
-        console.log(detailJournalPath)
-
-        if(detailJournalPath) {
-            try {
-                // masuk ke detail journal
-                await Promise.all([
-                    page.waitForNavigation(),
-                    page.goto(pageURL.substring(0, pageURL.indexOf('/', 10)) + detailJournalPath, {
-                        waitUntil: 'domcontentloaded'
-                    }),
-                    page.waitForSelector('.content-main'),
-                ])
-    
-                const body = await page.$eval(`.content-main`, (result) => {
-                    return result.innerHTML
+                let searchResRaw = ''
+                searchResRaw = await page.$$eval(".sr-list.al-article-box", (results) => {
+                    const temp = []
+                    for (let i = 0; i < results.length; i++) {
+                        // dapatin html
+                        temp.push(results[i].innerHTML + "")
+                    }
+                    return temp
                 })
                 
-                const jq = await cheerio.load(body + "")
+                if (searchResRaw.length === 0) {
+                    // empty search
+                    return crawlInfo.search_res_links
+                }
 
-                if (jq(".pdf-notice").text().length === 0) {
-                    let title = jq(".wi-article-title").text()
-                    title = title.replaceAll('\n', '')
-                    title = title.replace(/\s\s+/g, ' ')
-    
-                    let abstract = jq(".abstract").text()
-                    abstract = abstract.replaceAll('\n', '')
-                    abstract = abstract.replaceAll('.', ' ')
-                    abstract = abstract.replaceAll(',', ' ')
-                    abstract = abstract.replaceAll(';', ' ')
-                    abstract = abstract.replaceAll('(', '')
-                    abstract = abstract.replaceAll(')', '')
-                    abstract = abstract.replaceAll("'", '')
-                    abstract = abstract.replace(/\s\s+/g, ' ')
-    
-                    let fullText = ""
-                    jq(".chapter-para").map((i, card) => {
-                        if (!abstract.includes($(card).text())) {
-                            fullText += $(card).text() + ' '
-                        }
-                    })
-                    fullText = fullText.replaceAll('\n', '')
-                    fullText = fullText.replaceAll('.', ' ')
-                    fullText = fullText.replaceAll(',', ' ')
-                    fullText = fullText.replaceAll(';', ' ')
-                    fullText = fullText.replaceAll('(', '')
-                    fullText = fullText.replaceAll(')', '')
-                    fullText = fullText.replaceAll("'", '')
-                    fullText = fullText.replace(/\s\s+/g, ' ')
-    
-                    let keywords = jq(".kwd-group").text()
-                    keywords = keywords.replaceAll(',', '')
-    
-                    let content = $('.snippet').text()
-                    content = content.replaceAll('\n', ' ')
-                    content = content.replaceAll("'", '')
-                    content = content.replace(/\s\s+/g, ' ')
-
-                    let citedCount = 0
-                    if (jq(".__db_score_normal").text().length > 0) {
-                        citedCount = jq(".__db_score_normal").text()
+                for (let i = 0; i < searchResRaw.length; i++) {
+                    if (crawlInfo.search_res_links.length === MAX_CRAWL_DATA_ACD) {
+                        return crawlInfo.search_res_links
                     }
-                    
-                    if (abstract.length > 0 && fullText.length > 0) {
-                        crawlInfo.search_res_links.push({
-                            index: i + ((crawlInfo.pageNum * 20) - 20),
-                            g_id: jq("a:contains('https://doi.org')").attr("href").substring(24),
-                            title: title,
-                            abstract: abstract,
-                            keywords: keywords,
-                            full_text: fullText,
-                            references_count: jq(".js-splitview-ref-item").length,
-                            content: content,
-                            cited_count: citedCount,
-                            authors: $('.sri-authors').text(),
-                            publisher: 'Oxford Academic',
-                            publish_year: $(".sri-date").text().slice(-4),
-                            site: 'academic.oup.com',
-                            free: true,
-                            link: jq("a:contains('https://doi.org')").attr("href"),
-                            pdf: pageURL.substring(0, pageURL.indexOf('/', 10)) + jq(".pdf").attr("href"),
-                            value: 0
-                        })
+                    const $ = await cheerio.load(searchResRaw[i] + "")
+            
+                    const detailJournalPath = $(".article-link").attr("href")
+                    console.log(detailJournalPath)
+            
+                    if(detailJournalPath) {
+                        try {
+                            // masuk ke detail journal
+                            await Promise.all([
+                                page.waitForNavigation(),
+                                page.goto(pageURL.substring(0, pageURL.indexOf('/', 10)) + detailJournalPath, {
+                                    waitUntil: 'domcontentloaded'
+                                }),
+                                page.waitForSelector('.content-main', {
+                                    timeout: 10000
+                                }),
+                            ])
+                
+                            const body = await page.$eval(`.content-main`, (result) => {
+                                return result.innerHTML
+                            })
+                            
+                            const jq = await cheerio.load(body + "")
+            
+                            if (jq(".pdf-notice").text().length === 0) {
+                                let title = jq(".wi-article-title").text()
+                                title = title.replaceAll('\n', '')
+                                title = title.replace(/\s\s+/g, ' ')
+                                title = title.substring(1)
+                
+                                let abstract = jq(".abstract").text()
+                                abstract = abstract.replaceAll('\n', '')
+                                abstract = abstract.replaceAll('.', ' ')
+                                abstract = abstract.replaceAll(',', ' ')
+                                abstract = abstract.replaceAll(';', ' ')
+                                abstract = abstract.replaceAll('(', '')
+                                abstract = abstract.replaceAll(')', '')
+                                abstract = abstract.replaceAll("'", '')
+                                abstract = abstract.replace(/\s\s+/g, ' ')
+                
+                                let fullText = ""
+                                jq(".chapter-para").map((i, card) => {
+                                    if (!abstract.includes($(card).text())) {
+                                        fullText += $(card).text() + ' '
+                                    }
+                                })
+                                fullText = fullText.replaceAll('\n', '')
+                                fullText = fullText.replaceAll('.', ' ')
+                                fullText = fullText.replaceAll(',', ' ')
+                                fullText = fullText.replaceAll(';', ' ')
+                                fullText = fullText.replaceAll('(', '')
+                                fullText = fullText.replaceAll(')', '')
+                                fullText = fullText.replaceAll("'", '')
+                                fullText = fullText.replace(/\s\s+/g, ' ')
+                
+                                let keywords = jq(".kwd-group").text()
+                                keywords = keywords.replaceAll(',', '')
+                
+                                let content = $('.snippet').text()
+                                content = content.replaceAll('\n', ' ')
+                                content = content.replaceAll("'", '')
+                                content = content.replace(/\s\s+/g, ' ')
+            
+                                let citedCount = 0
+                                if (jq(".__db_score_normal").text().length > 0) {
+                                    citedCount = jq(".__db_score_normal").text()
+                                }
+                                
+                                if (abstract.length > 0 && fullText.length > 0) {
+                                    crawlInfo.search_res_links.push({
+                                        index: i + ((crawlInfo.pageNum * 20) - 20),
+                                        g_id: jq("a:contains('https://doi.org')").attr("href").substring(24),
+                                        title: title,
+                                        abstract: abstract,
+                                        keywords: keywords,
+                                        full_text: fullText,
+                                        references_count: jq(".js-splitview-ref-item").length,
+                                        content: content,
+                                        cited_count: citedCount,
+                                        authors: $('.sri-authors').text(),
+                                        publisher: 'Oxford Academic',
+                                        publish_year: $(".sri-date").text().slice(-4),
+                                        site: 'academic.oup.com',
+                                        free: true,
+                                        link: jq("a:contains('https://doi.org')").attr("href"),
+                                        pdf: pageURL.substring(0, pageURL.indexOf('/', 10)) + jq(".pdf").attr("href"),
+                                        value: 0
+                                    })
+                                }
+                            }
+                        }catch (e) {
+                            console.log('error load detail : ' + (i + 1))
+                            console.log(e)
+                        }
                     }
                 }
-            }catch (e) {
-                console.log('error load detail : ' + (i + 1))
-                console.log(e)
+
+                // next page
+                crawlInfo.pageNum++
+            } else {
+                // reset from recaptcha
+                crawlInfo.attempt++
             }
+        }catch (e) {
+            console.log("error load html page : " + e)
+            console.log("reseting page : " + crawlInfo.pageNum)
+            crawlInfo.attempt++
         }
     }
-
     
-    if(crawlInfo.pageNum < MAX_PAGE_ACD) {
-        // next page
-        crawlInfo.pageNum++
-        return await academicCrawl(browser, page, keyword, crawlInfo)
-    }
-
     return crawlInfo.search_res_links
 }
 
@@ -1291,7 +1232,6 @@ router.post('/scd', async (req, res) => {
             date: date,
             simpleKeyword: req.body.keyword
         }
-        MAX_CRAWL_DATA = 40
         const browser = await puppeteer.launch({
             'args' : [
                 '--no-sandbox',
@@ -1303,7 +1243,7 @@ router.post('/scd', async (req, res) => {
         })
         const page = await browser.newPage()
 
-        let results = await scienceDirectCrawl(browser, page, req.body.keyword, crawlInfo)
+        let results = await scienceDirectCrawl(page, req.body.keyword, crawlInfo)
 
         await browser.close()
 
@@ -1311,7 +1251,7 @@ router.post('/scd', async (req, res) => {
         cosinusKeyword.toLowerCase()
     
         // cosinus sim 2 after cosineSimilarity
-        journalsEvaluation(results, cosinusKeyword, req.body.simple, req.body.factors, 1)
+        journalsEvaluation(results, cosinusKeyword, req.body.simple, req.body.factors, req.body.searchFactors, 1)
     
         // ranking with KMA
         results = KMA(results, results.length, Math.ceil(results.length / 2) + 5, 100, 5)
@@ -1391,7 +1331,7 @@ router.post('/ieee', async (req, res) => {
         })
         const page = await browser.newPage()
 
-        let results = await ieeeCrawl(browser, page, keyword, crawlInfo)
+        let results = await ieeeCrawl(page, keyword, crawlInfo)
 
         await browser.close()
 
@@ -1479,7 +1419,7 @@ router.post('/acd', async (req, res) => {
         })
         const page = await browser.newPage()
 
-        let results = await academicCrawl(browser, page, keyword, crawlInfo)
+        let results = await academicCrawl(page, keyword, crawlInfo)
 
         await browser.close()
 
@@ -1728,14 +1668,14 @@ function calcCosineSimilarity (docs, docQueryTFxIDF, queryTF, mode) {
     }
 }
 
-const ALPHA = 0.2
+const ALPHA = 0.1
 const PENALTY_TRESHOLD = 0.7
 // require cosine similarity first
-function journalsEvaluation (docs, cosinusKeyword, simpleKeyword, sfKeyword, crawlerOpt) {
-    // sentence similarity, secara literal
-    const maxAbsSenSim = sentenceSimilarity(docs, simpleKeyword, 1)
-    const maxKeySenSim = sentenceSimilarity(docs, simpleKeyword, 2)
-    const maxFtSenSim = sentenceSimilarity(docs, simpleKeyword, 3)
+function journalsEvaluation (docs, cosinusKeyword, simpleKeyword, sfKeyword, searchFactors, crawlerOpt) {
+    // sentence similarity, secara literal dengan simpleKeyword
+    let maxAbsSenSim = sentenceSimilarity(docs, simpleKeyword, 1)
+    let maxKeySenSim = sentenceSimilarity(docs, simpleKeyword, 2)
+    let maxFtSenSim = sentenceSimilarity(docs, simpleKeyword, 3)
 
     const abstracts = []
     const keywords = []
@@ -1743,6 +1683,9 @@ function journalsEvaluation (docs, cosinusKeyword, simpleKeyword, sfKeyword, cra
     let maxRef = 1
     let maxCited = 1
     for (let i = 0; i < docs.length; i++) {
+        docs[i].factorSFAbs = 0
+        docs[i].factorSFKey = 0
+        docs[i].factorSFFt = 0
         abstracts.push(docs[i].abstract)
         keywords.push(docs[i].keywords)
         fullTexts.push(docs[i].full_text)
@@ -1787,23 +1730,39 @@ function journalsEvaluation (docs, cosinusKeyword, simpleKeyword, sfKeyword, cra
         docs[search_result[i].index].fullTextVal = (search_result[i].similarityIndex + docs[search_result[i].index].fullTextCos) * 0.5
     }
 
-    // cosine similarity sfKeyword, handmade first
+    // cosine similarity sfKeyword
     if (sfKeyword.length > 0) { 
-        // buat ngeboost value karena word sim sifatnya match bukan ==
+        // sf literal
+        maxAbsSenSim = 0
+        maxKeySenSim = 0
+        maxFtSenSim = 0
+        for (let i = 0; i < searchFactors.length; i++) {
+            maxAbsSenSim = sentenceSimilarity(docs, searchFactors[i].sub_factor, 1)
+            maxKeySenSim = sentenceSimilarity(docs, searchFactors[i].sub_factor, 2)
+            maxFtSenSim = sentenceSimilarity(docs, searchFactors[i].sub_factor, 3) 
+            for (let j = 0; j < docs.length; j++) {
+                docs[j].factorSFAbs += (docs[j].abstractSenSim / maxAbsSenSim)
+                docs[j].factorSFKey += (docs[j].keywordsSenSim / maxKeySenSim)
+                docs[j].factorSFFt += (docs[j].fullTextSenSim / maxFtSenSim)
+            }
+        }
+        // sensim dengan search factors 60%
+        for (let j = 0; j < docs.length; j++) {
+            docs[j].factorSFAbs = (docs[j].factorSFAbs / searchFactors.length) * 0.6
+            docs[j].factorSFKey = (docs[j].factorSFKey / searchFactors.length) * 0.6
+            docs[j].factorSFFt = (docs[j].factorSFFt / searchFactors.length) * 0.6
+        }
+
+        // buat ngeboost value karena word sim sifatnya match bukan == (cosine sim)
         const maxAbsWordSim = wordSimilarity(docs, sfKeyword, 1)
         const maxKeyWordSim = wordSimilarity(docs, sfKeyword, 2)
         const maxFtWordSim = wordSimilarity(docs, sfKeyword, 3)
-
-        // cosine similarity dengan sf
-        cosineSimilarity(docs, sfKeyword, 1)
-        cosineSimilarity(docs, sfKeyword, 2)
-        cosineSimilarity(docs, sfKeyword, 3)
     
-        // cosinus similarity npm dengan sf
-        // kemudian ditambah 0.2 * word sim value
+        // cosinus similarity npm dengan sfKeyword bagiannya 0.4 / 40%
+        // kemudian ditambah 0.1 * word sim value
         search_result = tf_idf_abs.rankDocumentsByQuery(sfKeyword)
         for (let i = 0; i < search_result.length; i++) {
-            docs[search_result[i].index].factorSFAbs = (search_result[i].similarityIndex + docs[search_result[i].index].abstractCos) * 0.5
+            docs[search_result[i].index].factorSFAbs += ((search_result[i].similarityIndex) * 0.4)
             docs[search_result[i].index].factorSFAbs += (ALPHA * docs[search_result[i].index].factorSFAbs * (docs[search_result[i].index].abstractWordSim / maxAbsWordSim))
             if (docs[search_result[i].index].factorSFAbs > 1) {
                 docs[search_result[i].index].factorSFAbs = 1
@@ -1812,7 +1771,7 @@ function journalsEvaluation (docs, cosinusKeyword, simpleKeyword, sfKeyword, cra
     
         search_result = tf_idf_key.rankDocumentsByQuery(sfKeyword)
         for (let i = 0; i < search_result.length; i++) {
-            docs[search_result[i].index].factorSFKey = (search_result[i].similarityIndex + docs[search_result[i].index].keywordsCos) * 0.5
+            docs[search_result[i].index].factorSFKey += ((search_result[i].similarityIndex) * 0.4)
             docs[search_result[i].index].factorSFKey += (ALPHA * docs[search_result[i].index].factorSFKey * (docs[search_result[i].index].keywordsWordSim / maxKeyWordSim))
             if (docs[search_result[i].index].factorSFKey > 1) {
                 docs[search_result[i].index].factorSFKey = 1
@@ -1821,7 +1780,7 @@ function journalsEvaluation (docs, cosinusKeyword, simpleKeyword, sfKeyword, cra
 
         search_result = tf_idf_ft.rankDocumentsByQuery(sfKeyword)
         for (let i = 0; i < search_result.length; i++) {
-            docs[search_result[i].index].factorSFFt = (search_result[i].similarityIndex + docs[search_result[i].index].fullTextCos) * 0.5
+            docs[search_result[i].index].factorSFFt += ((search_result[i].similarityIndex) * 0.4)
             docs[search_result[i].index].factorSFFt += (ALPHA * docs[search_result[i].index].factorSFFt * (docs[search_result[i].index].fullTextWordSim / maxFtWordSim))
             if (docs[search_result[i].index].factorSFFt > 1) {
                 docs[search_result[i].index].factorSFFt = 1
@@ -1880,7 +1839,7 @@ function journalsEvaluation (docs, cosinusKeyword, simpleKeyword, sfKeyword, cra
     // baru cosine similarity npm lagi dengan keyword + sf 
     // kemudian val = (npm + handmade) / 2 
     // kemudian dicari factor = factorSenSim (40%) + factorSF (60%)
-    // factorSF berasal dari cosinesim dengan sf dan wordsim dengan sf
+    // factorSF berasal dari (60% sensim dengan literal search factors) + (40% npm cosine sim dengan sfkeyword + 0.1 * wordsim dengan sfkeyword)
     // factorSF -> untuk mencegah journal yang tidak sesuai dengan background (search factor) pencarian user 
     // factorSenSim -> untuk mencegah journal yang tidak mengandung keyword secara literal (genetic algorithm bukan genetic human hair, best algorithm)
     // factor akan memengaruhi fitness value, semakin mendekati 1 (max) maka journal = semakin relevant
