@@ -185,7 +185,7 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
         await browser.close()    
     }catch(e) {
         console.log(e.name)
-        if (e.name.toLowerCase().includes('timeout')) {
+        if (e.name === 'TimeoutError') {
             return {
                 'error': 'timeout',
                 'msg': 'Crawler Website Timeout, Please Refresh The Page'
@@ -633,7 +633,6 @@ const POSSIBLE_FULL_TEXT_REMOVAL = [
     'CRediT authorship'
 ]
 const MAX_PAGE_SCD = 3 // per page 100
-const MAX_NULL_RESET = 3
 
 // target 'https://www.sciencedirect.com'
 async function scienceDirectCrawl(browser, page, keyword, crawlInfo) {
@@ -644,7 +643,7 @@ async function scienceDirectCrawl(browser, page, keyword, crawlInfo) {
         page.goto(`https://www.sciencedirect.com/search?qs=${keyword}&date=${crawlInfo.date}&accessTypes=openaccess&show=100&offset=${((crawlInfo.pageNum * 100) - 100)}`, {
             waitUntil: 'domcontentloaded'
         }),
-        page.waitForSelector('ol.search-result-wrapper > li'),
+        (page.waitForSelector('.error-zero-results') || page.waitForSelector('ol.search-result-wrapper > li')),
     ])
 
     const pageURL = page.url()
@@ -680,25 +679,6 @@ async function scienceDirectCrawl(browser, page, keyword, crawlInfo) {
     }
 
     if(searchResRaw.length === 0) {
-        // try to reset this page
-        if (crawlInfo.attempt < MAX_NULL_RESET) {
-            console.log("reset page")
-            crawlInfo.attempt++
-
-            await browser.close()
-            browser = await puppeteer.launch({
-                'args' : [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--start-maximized'
-                ],
-                defaultViewport: null,
-                headless: true
-            })
-            page = await browser.newPage()
-    
-            return scienceDirectCrawl(browser, page, keyword, crawlInfo)
-        }
         return crawlInfo.search_res_links
     }
 
