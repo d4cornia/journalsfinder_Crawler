@@ -27,6 +27,13 @@ router.post('/crawlAndRank', cekJWT, async (req, res) => {
         // crawl and ranking
         const results = await crawlAndRank(req.body.keyword, req.body.ogKeyword, sf, true, req.body.yearStart, req.body.yearEnd, parseInt(req.body.crawlerOpt))
 
+        if (results.error) {
+            return res.status(200).json({
+                'msg': results.msg,
+                'status': 'Failed'
+            });
+        }
+
         // add new user log
         const userLogId = await addNewUserLog(req)
 
@@ -179,12 +186,16 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
         await browser.close()    
     }catch(e) {
         console.log(e)
-        return res.status(501).json({
-            'message': 'Error crawling',
-            'data':{e
-            },
-            'status': 'Error'
-        });
+        if (e.toLowerCase().includes('timeout')) {
+            return {
+                'error': 'timeout',
+                'msg': 'Error Timeout'
+            }
+        }
+        return {
+            'error': 'crawl',
+            'msg': 'Crawler Crashed'
+        }
     }
 
     // focused crawl (cosinus similarity)
@@ -804,7 +815,11 @@ async function scienceDirectCrawl(browser, page, keyword, crawlInfo) {
                             pdf: pageURL.substring(0, pageURL.indexOf('/', 10)) + jq("a:contains('PDF')").attr("href"),
                             value: 0
                         })
+                    } else {
+                        console.log('abs or full not full')
                     }
+                } else {
+                    console.log('embed')
                 }
             } catch (error) {
                 console.log("error obtaining journal info i-" + (i + 1))
@@ -1315,11 +1330,11 @@ router.post('/scd', async (req, res) => {
 
         await browser.close()
 
-        let cosinusKeyword = req.body.simple + " " + req.body.factor1 + " " + req.body.factor2
+        let cosinusKeyword = req.body.simple + " " + req.body.factors
         cosinusKeyword.toLowerCase()
     
         // cosinus sim 2 after cosineSimilarity
-        journalsEvaluation(results, cosinusKeyword, req.body.simple, req.body.factor1 + " " + req.body.factor2, 1)
+        journalsEvaluation(results, cosinusKeyword, req.body.simple, req.body.factors, 1)
     
         // ranking with KMA
         results = KMA(results, results.length, Math.ceil(results.length / 2) + 5, 100, 5)
@@ -1403,11 +1418,11 @@ router.post('/ieee', async (req, res) => {
 
         await browser.close()
 
-        let cosinusKeyword = req.body.simple + " " + req.body.factor1 + " " + req.body.factor2
+        let cosinusKeyword = req.body.simple + " " + req.body.factors
         cosinusKeyword.toLowerCase()
     
         // cosinus sim 2 after cosineSimilarity
-        journalsEvaluation(results, cosinusKeyword, req.body.simple, req.body.factor1, 2)
+        journalsEvaluation(results, cosinusKeyword, req.body.simple, req.body.factors, 2)
     
         // ranking with KMA
         results = KMA(results, results.length, Math.ceil(results.length / 2) + 5, 100, 5, 2)
@@ -1491,11 +1506,11 @@ router.post('/acd', async (req, res) => {
 
         await browser.close()
 
-        let cosinusKeyword = req.body.simple + " " + req.body.factor1 + " " + req.body.factor2
+        let cosinusKeyword = req.body.simple + " " + req.body.factors
         cosinusKeyword.toLowerCase()
     
         // cosinus sim 2 after cosineSimilarity
-        journalsEvaluation(results, cosinusKeyword, req.body.simple, req.body.factor1 + " " + req.body.factor2, 3)
+        journalsEvaluation(results, cosinusKeyword, req.body.simple, req.body.factors, 3)
     
         // ranking with KMA
         results = KMA(results, results.length, Math.ceil(results.length / 2) + 5, 100, 5, 2)
