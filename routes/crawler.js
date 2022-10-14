@@ -850,7 +850,7 @@ async function ieeeCrawl(browser, page, keyword, crawlInfo) {
             waitUntil: 'domcontentloaded',
             timeout: 20000
         }),
-        page.waitForSelector('.List-results-items'),
+        page.waitForSelector('.List-results'),
     ])
 
     const pageURL = page.url()
