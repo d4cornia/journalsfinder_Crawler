@@ -64,11 +64,10 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
         // search biasa
         simpleKeyword = keyword
         if (simpleKeyword.includes('&')) {
-            results.push({
-                'g_id': 1,
-                'title': 'application error'
-            })
-            return results
+            return {
+                'error': 'app',
+                'msg': 'Application Error'
+            }
         }
     } else {
         // advanced search
@@ -185,11 +184,11 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
     
         await browser.close()    
     }catch(e) {
-        console.log(e.message)
-        if (e.message.toLowerCase().includes('timeout')) {
+        console.log(e.name)
+        if (e.name.toLowerCase().includes('timeout')) {
             return {
                 'error': 'timeout',
-                'msg': 'Website Timeout'
+                'msg': 'Crawler Website Timeout, Please Refresh The Page'
             }
         }
         return {
