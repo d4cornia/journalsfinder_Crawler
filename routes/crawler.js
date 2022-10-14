@@ -643,8 +643,16 @@ async function scienceDirectCrawl(browser, page, keyword, crawlInfo) {
         page.goto(`https://www.sciencedirect.com/search?qs=${keyword}&date=${crawlInfo.date}&accessTypes=openaccess&show=100&offset=${((crawlInfo.pageNum * 100) - 100)}`, {
             waitUntil: 'domcontentloaded'
         }),
-        (page.waitForSelector('.error-zero-results') || page.waitForSelector('ol.search-result-wrapper > li')),
     ])
+
+    try {
+        await page.waitForSelector('ol.search-result-wrapper > li', {
+            timeout: 5000
+        })
+    } catch (e) {
+        // empty search
+        return crawlInfo.search_res_links
+    }
 
     const pageURL = page.url()
 
@@ -676,10 +684,6 @@ async function scienceDirectCrawl(browser, page, keyword, crawlInfo) {
         crawlInfo.attempt++
 
         return scienceDirectCrawl(browser, page, keyword, crawlInfo)
-    }
-
-    if(searchResRaw.length === 0) {
-        return crawlInfo.search_res_links
     }
 
     for (let i = 0; i < searchResRaw.length; i++) {
@@ -733,6 +737,7 @@ async function scienceDirectCrawl(browser, page, keyword, crawlInfo) {
                     keywords = keywords.replaceAll('Keywords', '')
                     keywords = keywords.replaceAll('(', '')
                     keywords = keywords.replaceAll(')', '')
+                    keywords = keywords.replaceAll("'", '')
                     keywords = keywords.replace(/\s\s+/g, ' ')
                     
                     const citedCount = jq("#citing-articles-header").text().substring(jq("#citing-articles-header").text().indexOf('(') + 1, jq("#citing-articles-header").text().indexOf(')'))
@@ -757,6 +762,7 @@ async function scienceDirectCrawl(browser, page, keyword, crawlInfo) {
                     fullText = fullText.replaceAll(':', '')
                     fullText = fullText.replaceAll('(', '')
                     fullText = fullText.replaceAll(')', '')
+                    fullText = fullText.replaceAll("'", '')
                     fullText = fullText.replace(/\s\s+/g, ' ')
 
                     const abstract = jq(".abstract.author > div > p").text()
@@ -830,8 +836,16 @@ async function ieeeCrawl(browser, page, keyword, crawlInfo) {
             waitUntil: 'domcontentloaded',
             timeout: 20000
         }),
-        page.waitForSelector('.List-results'),
     ])
+
+    try {
+        await page.waitForSelector('.List-results-items', {
+            timeout: 5000
+        })
+    } catch (e) {
+        // empty search
+        return crawlInfo.search_res_links
+    }
 
     const pageURL = page.url()
 
@@ -863,10 +877,6 @@ async function ieeeCrawl(browser, page, keyword, crawlInfo) {
         crawlInfo.attempt++
 
         return ieeeCrawl(browser, page, keyword, crawlInfo)
-    }
-
-    if(searchResRaw.length === 0) {
-        return crawlInfo.search_res_links
     }
 
     for (let i = 0; i < searchResRaw.length; i++) {
@@ -914,6 +924,7 @@ async function ieeeCrawl(browser, page, keyword, crawlInfo) {
                 keywords = keywords.replaceAll('IEEE', '')
                 keywords = keywords.replaceAll('Keywords', '')
                 keywords = keywords.replaceAll(',', ' ')
+                keywords = keywords.replaceAll("'", '')
                 keywords = keywords.replace(/\s\s+/g, ' ')
 
                 const id = detailJournalPath.substring(10, 17)
@@ -924,6 +935,7 @@ async function ieeeCrawl(browser, page, keyword, crawlInfo) {
                 abstract = abstract.replaceAll('\n', '')
                 abstract = abstract.replaceAll('(', '')
                 abstract = abstract.replaceAll(')', '')
+                abstract = abstract.replaceAll("'", '')
 
                 const spl = abstract.split('.')
                 let content = ''
@@ -954,6 +966,7 @@ async function ieeeCrawl(browser, page, keyword, crawlInfo) {
                 fullText = fullText.replaceAll(';', ' ')
                 fullText = fullText.replaceAll('(', '')
                 fullText = fullText.replaceAll(')', '')
+                fullText = fullText.replaceAll("'", '')
                 fullText = fullText.replace(/\s\s+/g, ' ')
 
                 let publishYear = jq(".doc-abstract-pubdate").text().slice(-5)
@@ -1108,6 +1121,7 @@ async function academicCrawl(browser, page, keyword, crawlInfo) {
                     abstract = abstract.replaceAll(';', ' ')
                     abstract = abstract.replaceAll('(', '')
                     abstract = abstract.replaceAll(')', '')
+                    abstract = abstract.replaceAll("'", '')
                     abstract = abstract.replace(/\s\s+/g, ' ')
     
                     let fullText = ""
@@ -1122,6 +1136,7 @@ async function academicCrawl(browser, page, keyword, crawlInfo) {
                     fullText = fullText.replaceAll(';', ' ')
                     fullText = fullText.replaceAll('(', '')
                     fullText = fullText.replaceAll(')', '')
+                    fullText = fullText.replaceAll("'", '')
                     fullText = fullText.replace(/\s\s+/g, ' ')
     
                     let keywords = jq(".kwd-group").text()
@@ -1129,6 +1144,7 @@ async function academicCrawl(browser, page, keyword, crawlInfo) {
     
                     let content = $('.snippet').text()
                     content = content.replaceAll('\n', ' ')
+                    content = content.replaceAll("'", '')
                     content = content.replace(/\s\s+/g, ' ')
 
                     let citedCount = 0
@@ -1371,7 +1387,7 @@ router.post('/ieee', async (req, res) => {
                 '--start-maximized',
             ],
             defaultViewport: null,
-            headless: false
+            headless: true
         })
         const page = await browser.newPage()
 
