@@ -189,7 +189,7 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
         if (e.message.toLowerCase().includes('timeout')) {
             return {
                 'error': 'timeout',
-                'msg': 'Error Timeout'
+                'msg': 'Website Timeout'
             }
         }
         return {
@@ -848,7 +848,8 @@ async function ieeeCrawl(browser, page, keyword, crawlInfo) {
     await Promise.all([
         page.waitForNavigation(),
         page.goto(`https://ieeexplore.ieee.org/search/searchresult.jsp?queryText=${keyword}&highlight=true&returnType=SEARCH&matchPubs=true&rowsPerPage=10&pageNumber=${crawlInfo.pageNum}&openAccess=true&refinements=ContentType:Journals${crawlInfo.date}&returnFacets=ALL`, {
-            waitUntil: 'domcontentloaded'
+            waitUntil: 'domcontentloaded',
+            timeout: 20000
         }),
         page.waitForSelector('.List-results-items'),
     ])
@@ -886,25 +887,6 @@ async function ieeeCrawl(browser, page, keyword, crawlInfo) {
     }
 
     if(searchResRaw.length === 0) {
-        // try to reset this page
-        if (crawlInfo.attempt < MAX_NULL_RESET) {
-            console.log("reset page")
-            crawlInfo.attempt++
-
-            await browser.close()
-            browser = await puppeteer.launch({
-                'args' : [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--start-maximized'
-                ],
-                defaultViewport: null,
-                headless: true
-            })
-            page = await browser.newPage()
-    
-            return ieeeCrawl(browser, page, keyword, crawlInfo)
-        }
         return crawlInfo.search_res_links
     }
 
@@ -1410,7 +1392,7 @@ router.post('/ieee', async (req, res) => {
                 '--start-maximized',
             ],
             defaultViewport: null,
-            headless: true
+            headless: false
         })
         const page = await browser.newPage()
 
