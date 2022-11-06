@@ -7,7 +7,7 @@ const PORTION = 0.5
 const MAX_GEN = 200
 const MAX_IMPROVEMENT = 30
 const MAX_GEN_IMPROVE = 3
-const MAX_GEN_STAGNAN = 5
+const MAX_GEN_STAGNAN = 6
 const OPTIMUM_X = 10
 const OPTIMUM_Y = 10
 const OPTIMUM_Z = 10
@@ -44,18 +44,13 @@ function KMA (journals, initPop, minPop, maxPop, initIncDecAdaPop, crawlerOpt) {
     // 1 komodo = 1 journal
     for (let i = 0; i < journals.length; i++) {
         // menentukan value1, value2, dan value3
-        if (crawlerOpt === 0) {
-            // scholar
-            journals[i].value1 = journals[i].abstractVal * OFFSET
-            journals[i].value2 = journals[i].keywordsVal * OFFSET
-            journals[i].value3 = journals[i].citedVal * OFFSET
-        } else if (crawlerOpt === 3) {
+        if (crawlerOpt === 3) {
             // acd
             journals[i].value1 = ((journals[i].abstractVal * 0.9) + (journals[i].referencesVal * 0.1)) * OFFSET
             journals[i].value2 = journals[i].fullTextVal * OFFSET
             journals[i].value3 = ((journals[i].keywordsVal * 0.4) + (journals[i].citedVal * 0.6)) * OFFSET
         } else {
-            // scd & ieee
+            // scd & ieee & sage
             journals[i].value1 = ((journals[i].abstractVal * 0.9) + (journals[i].referencesVal * 0.1)) * OFFSET
             journals[i].value2 = journals[i].fullTextVal * OFFSET
             journals[i].value3 = ((journals[i].citedVal * 0.4) + (journals[i].keywordsVal * 0.6)) * OFFSET
@@ -83,6 +78,10 @@ function KMA (journals, initPop, minPop, maxPop, initIncDecAdaPop, crawlerOpt) {
     bestKomodo = komodos[0]
 
     while (!stoppingCriterion(gen, totalGenImprove)) {
+        // console.log("=================================================================")
+        // console.log("GEN : " + gen)
+        // console.log("=================================================================")
+
         newGenKomodos = []
         let splitedKomodos = splitPopulation(komodos)
         
@@ -98,12 +97,10 @@ function KMA (journals, initPop, minPop, maxPop, initIncDecAdaPop, crawlerOpt) {
             newGenKomodos.push(splitedKomodos.smallMales[i])
         }
 
-        rankKomodos(newGenKomodos)
-
         // bestKomodo : i - 1 gen / past gen / old gen
         // newGenKomodos[0] : i gen / new gen
         //  SIDE NOTE lebih kecil karena semakin kecil semakin baik (paper, sesuai paper)
-        if (newGenKomodos[0].fitness < bestKomodo.fitness) {
+        if (bestQualityKomodos(newGenKomodos).fitness < bestKomodo.fitness) {
             genImprove++
             genStagnan = 0
             bestKomodo = newGenKomodos[0]
@@ -133,18 +130,14 @@ function KMA (journals, initPop, minPop, maxPop, initIncDecAdaPop, crawlerOpt) {
                 reposition(newGenKomodos[i])
             }
 
-            rankKomodos(newGenKomodos)
-
             // reset ctr
             genStagnan = 0
         }
 
+        rankKomodos(newGenKomodos)
+
         // replace old gen with new gen
         komodos = newGenKomodos
-
-        // console.log("=================================================================")
-        // console.log("GEN : " + gen)
-        // console.log("=================================================================")
 
         // gen + 1
         gen++
@@ -176,6 +169,7 @@ function rankKomodos (komodos) {
     komodos.sort((a, b) => a.fitness > b.fitness ? 1 : -1)
 }
 
+// find best quality komodo
 function bestQualityKomodos (komodos) {
     let bestKomodo = {
         'fitness': 999999
@@ -221,8 +215,6 @@ function largeKomodoBehavior (bigMales) {
     for (let i = 0; i < bigMales.length; i++) {
         let maxFollow = Math.ceil(Math.random() * 2)
         let follow = 0
-        let r1 = Math.random()
-        let r2 = Math.random()
         let w = {
             'x' : 0, 
             'y' : 0, 
@@ -230,21 +222,21 @@ function largeKomodoBehavior (bigMales) {
         }
 
         // sigma w
-        for (let j = 0; j < bigMales.length && follow < maxFollow; j++) {
+        for (let j = Math.floor(Math.random() * bigMales.length); j < bigMales.length && follow < maxFollow; j++) {
             if (j != i) {
                 follow++
-                r1 = Math.random() * ALPHA
+                let r1 = Math.random() * ALPHA
                 // chance high quality do exploitation
-                r2 = Math.random() * ALPHA
+                let r2 = Math.random() * ALPHA
                 //  SIDE NOTE bisa jadi dokumentasi karena optimum adlaah 0 jadi kebalik (tdk sesuai paper)
-                // karena fitness terdikit = fitness paling bagus maka < 
-                if (f(bigMales[i].x, bigMales[i].y, bigMales[i].z, bigMales[i].journal.factor) < f(bigMales[j].x, bigMales[j].y, bigMales[j].z, bigMales[j].journal.factor) && r2 < 0.7) {
-                    // ki - kj, exploitation
+                // karena fitness terdikit = fitness paling bagus, dan yang fix melakukan exploitation adalah komodo terburuk 
+                if (f(bigMales[i].x, bigMales[i].y, bigMales[i].z, bigMales[i].journal.factor) < f(bigMales[j].x, bigMales[j].y, bigMales[j].z, bigMales[j].journal.factor) || r2 < 0.5) {
+                    // ki - kj, exploration
                     w.x += r1 * (bigMales[i].x - bigMales[j].x)
                     w.y += r1 * (bigMales[i].y - bigMales[j].y)
                     w.z += r1 * (bigMales[i].z - bigMales[j].z)
                 } else {
-                    // kj - ki, exploration
+                    // kj - ki, exploitation
                     w.x += r1 * (bigMales[j].x - bigMales[i].x)
                     w.y += r1 * (bigMales[j].y - bigMales[i].y)
                     w.z += r1 * (bigMales[j].z - bigMales[i].z)
@@ -253,7 +245,7 @@ function largeKomodoBehavior (bigMales) {
         }
 
 
-        // ki'
+        // ki', high quality - low quality both in exploi or explor
         bigMales[i].x += w.x
         bigMales[i].y += w.y
         bigMales[i].z += w.z  
@@ -384,7 +376,7 @@ function smallKomodoBehavior (smallMales, bigMales) {
         }
 
         // sigma w
-        for (let j = 0; j < bigMales.length && followBM < maxFollow; j++) {
+        for (let j = Math.floor(Math.random() * bigMales.length); j < bigMales.length && followBM < maxFollow; j++) {
             followBM++
             r1 = Math.random()
             r2 = Math.random()

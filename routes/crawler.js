@@ -90,23 +90,26 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
 
         // crawl bedasarkan crawl opt
         if (crawlerOpt === 0) {
-            // scholar crawl
+            // crawler sage 
+            if(yearStart !== '-' && yearEnd !== '-') {
+                yearStart = '1987'
+                yearEnd = '2023'
+            } else if (yearStart !== '-') {
+                yearStart = '1987'
+            } else if (yearEnd !== '-') {
+                yearEnd = '2023'
+            }
+    
             let crawlInfo = {
                 search_res_links: [],
-                pageNum : 1,
+                pageNum : 0,
                 attempt : 1,
-                yearStart: '',
-                yearEnd: ''
+                yearStart: yearStart,
+                yearEnd: yearEnd,
+                simpleKeyword: simpleKeyword
             }
     
-            if(yearStart !== '-') {
-                crawlInfo.yearStart = yearStart
-            }
-            if(yearEnd !== '-') {
-                crawlInfo.yearEnd = yearEnd
-            }
-    
-            results = await googleScholarCrawl(browser, page, keyword, crawlInfo)
+            results = await sageCrawl(page, keyword, crawlInfo)  
         } else if (crawlerOpt === 1) {
             // crawler SCD
             let date = ''
@@ -210,11 +213,13 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
     console.log('"' + cosinusKeyword + '"')
     console.log('"' + sfKeyword + '"')
 
-    // journal valuation
-    journalsEvaluation(results, cosinusKeyword, simpleKeyword, sfKeyword, searchFactors, crawlerOpt)
-
-    // ranking with KMA
-    results = KMA(results, results.length, Math.ceil(results.length / 2) + 5, 100, 5, crawlerOpt) 
+    if (results.length > 0) {
+        // journal valuation
+        journalsEvaluation(results, cosinusKeyword, simpleKeyword, sfKeyword, searchFactors, crawlerOpt)
+    
+        // ranking with KMA
+        results = KMA(results, results.length, Math.ceil(results.length / 2) + 5, 100, 5, crawlerOpt) 
+    }
     
     return results
 }
@@ -318,306 +323,172 @@ router.post('/searchResult', cekJWT, async (req, res) => {
 });
 
 
+const MAX_RESET = 4
 
-// scholar crawler SETUP
-const MAX_RESET = 5
-const MAX_PAGE = 10
-let MAX_CRAWL_DATA = 30
-const POSSIBLE_PDF_PLACEMENT = [
-    'PDF',
-    'pdf',
-    'text',
-    'article',
-    'Download',
-    'download',
-    'Paper',
-    'paper',
-    'file'
-]
+// sage crawler setup
+const MAX_PAGE_SAGE = 3 // per page 100
+let MAX_CRAWL_DATA_SAGE = 30
 
-async function recaptchaSolver(browser, page, keyword, crawlInfo) {
-    try{
-        if(crawlInfo.attempt == MAX_RESET) {
-            return "Reach Maximum Callback Reset"
-        }
-        const recaptcha = await page.$eval(`body`, (result) => {
-            return result.innerHTML
-        })
-        const $ = await cheerio.load(recaptcha + "")
+// target 'https://journals.sagepub.com'
+async function sageCrawl(page, keyword, crawlInfo) {
+    while (crawlInfo.pageNum < MAX_PAGE_SAGE && crawlInfo.attempt < MAX_RESET) {
+        console.log("Page num : " + crawlInfo.pageNum)
         
-        if ($('div').text().includes('Please try your request again later.')) {
-            // reset
-            await browser.close()
-            browser = await puppeteer.launch({
-                'args' : [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--start-maximized'
-                ],
-                defaultViewport: null,
-                headless: true
+        await Promise.all([
+            page.waitForNavigation(),
+            page.goto(`https://journals.sagepub.com/action/doSearch?AllField=${keyword}&access=18&startPage=${crawlInfo.pageNum}&rel=nofollow&ContentItemType=research-article&ContentItemType=other&pageSize=100&AfterYear=${crawlInfo.yearStart}&BeforeYear=${crawlInfo.yearEnd}`, {
+                waitUntil: 'domcontentloaded'
+            }),
+        ])
+    
+        try {
+            await page.waitForSelector('.rlist.search-result__body.items-results', {
+                timeout: 5000
             })
-            page = await browser.newPage()
-            crawlInfo.attempt++
-
-            return googleScholarCrawl(browser, page, keyword, crawlInfo)
-        }
-    } catch (e) {
-        console.log("error recaptcha : " + e)
-    }
-}
-
-// target google scholar
-async function googleScholarCrawl(browser, page, keyword, crawlInfo) {
-    console.log("Page num : " + crawlInfo.pageNum)
-
-    // buka halaman hasil pencarian google scholar
-    await page.goto(`https://scholar.google.com/scholar?start=${((crawlInfo.pageNum * 10) - 10)}&q=${keyword}&hl=en&as_ylo=${crawlInfo.yearStart}&as_yhi=${crawlInfo.yearEnd}`, {
-        waitUntil: 'networkidle2'
-    })
-
-    // recaptcha handler
-    await recaptchaSolver(browser, page, keyword, crawlInfo)
-
-    // dapatin html semua search result
-    let searchResRaw = ''
-    try{
-        searchResRaw = await page.$$eval(".gs_r.gs_or.gs_scl", (results) => {
-            const temp = []
-            for (let i = 0; i < results.length; i++) {
-                // dapatin html
-                temp.push(results[i].innerHTML + "")
-            }
-            return temp
-        })
-    }catch (e) {
-        console.log("error load html page : " + e)
-        console.log("reseting page : " + crawlInfo.pageNum)
-        // try to reset this page
-        await browser.close()
-        browser = await puppeteer.launch({
-            'args' : [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--start-maximized'
-            ],
-            defaultViewport: null,
-            headless: true
-        })
-        page = await browser.newPage()
-        crawlInfo.attempt++
-
-        return googleScholarCrawl(browser, page, keyword, crawlInfo)
-    }
-    if(searchResRaw.length === 0) {
-        return crawlInfo.search_res_links
-    }
-
-    // dapetin informasi yang diperlukan
-    for (let i = 0; i < searchResRaw.length; i++) {
-        if (crawlInfo.search_res_links.length >= MAX_CRAWL_DATA) {
+        } catch (e) {
+            // empty search
             return crawlInfo.search_res_links
         }
-        const $ = await cheerio.load(searchResRaw[i] + "")
-
-        // harus ada link website
-        if ($(".gs_ri > .gs_rt > a").attr("href")) {
-            // get info
-            let obj = {
-                abstract: 'no-abs',
-                keywords: 'no-key',
-                content: $(`.gs_ri > .gs_rs`).text(),
-                cited_count: $(`.gs_ri > .gs_fl > a:contains('Cited by')`).text(),
-                authors: '-',
-                publisher: '-',
-                publish_year: '-',
-                site: '-',
-                free: true,
-                pdf: '-',
-                link: $(".gs_ri > .gs_rt > a").attr("href")
-            }
-            const res = $(`.gs_ri > .gs_a`).text()
-            
-            obj.authors = res.substring(0, findDash(res, 0) - 1)
-            if (res.indexOf(',', findDash(res, 0) + 1) > 0) {
-                obj.publisher = res.substring(findDash(res, 0) + 2,  res.indexOf(',', findDash(res, 0) + 1))
-                obj.publish_year = res.substring(res.indexOf(',', findDash(res, 0) + 1) + 2,  res.indexOf('-', findDash(res, 0) + 1) - 1)
-            } else {
-                if(isNaN(parseInt(res.substring(findDash(res, 0) + 1,  res.indexOf('-', findDash(res, 0) + 1) - 1)))) {
-                    obj.publisher = res.substring(findDash(res, 0) + 1,  res.indexOf('-', findDash(res, 0) + 1) - 1)
-                } else {
-                    obj.publish_year = res.substring(findDash(res, 0) + 1,  res.indexOf('-', findDash(res, 0) + 1) - 1)
+    
+        const pageURL = page.url()
+    
+        let searchResRaw = ''
+        try{
+            searchResRaw = await page.$$eval(".issue-item", (results) => {
+                const temp = []
+                for (let i = 0; i < results.length; i++) {
+                    // dapatin html
+                    temp.push(results[i].innerHTML + "")
                 }
-            }
-            obj.site = res.substring(res.indexOf('-', findDash(res, 0) + 1) + 2)
+                return temp
+            })
 
-            if(obj.cited_count == '') {
-                obj.cited_count = "Cited By 0"
-            }
-
-            // get abstract
-            if(!$(".gs_ri > .gs_rt > a").attr("href").includes('.pdf')) {
-                try{
-                    await page.goto($(".gs_ri > .gs_rt > a").attr("href"), {
-                        // timeout: 3000,
-                        waitUntil: 'domcontentloaded'
+            for (let i = 0; i < searchResRaw.length; i++) {
+                if (crawlInfo.search_res_links.length === MAX_CRAWL_DATA_SAGE) {
+                    return crawlInfo.search_res_links
+                }
+                const $ = await cheerio.load(searchResRaw[i] + "")
+        
+                const detailJournalPath = $("a.sage-search-title").attr("href")
+                console.log(detailJournalPath)
+            
+                // obtaining journal info detail
+                try {
+                    // masuk ke detail journal
+                    await Promise.all([
+                        page.waitForNavigation(),
+                        page.goto(pageURL.substring(0, pageURL.indexOf('/', 10)) + detailJournalPath, {
+                            waitUntil: 'domcontentloaded'
+                        }), page.waitForSelector(".content > article", {
+                            timeout: 8000
+                        })
+                    ])
+        
+                    const body = await page.$eval(`body`, (result) => {
+                        return result.innerHTML
                     })
+                    
+                    const jq = await cheerio.load(body + "")
 
-                    const pageURL = page.url()
-                    console.log("site url : " + pageURL.substring(0, pageURL.indexOf('/', 10)))
-
-                    // get abstract possible locations and keywords possible location
-                    let query = await firedb.collection('abstract_possible_locations')
-                    query = query.where('site_url', '==', pageURL.substring(0, pageURL.indexOf('/', 10)))
-                    const resu = await query.get()
-
-                    if (!resu.empty) {
-                        let selector = '-'
-                        let keywordSelector = '-'
-                        resu.forEach((doc) => {
-                            selector = doc.data().selector
-                            keywordSelector = doc.data().keyword_selector
-                        });
-
-                        // dapetin abstract
-                        if (selector != '-' && selector != 'no-abs') {
-                            try {
-                                obj.abstract = await page.$eval(`${selector}`, (result) => {
-                                    return result.textContent.toLowerCase()
-                                })
-                            } catch (e) {
-                                console.log('error evaluate abstract: ' + e)
-                            }
-                        }
-
-                        // dapetin keywords
-                        if (keywordSelector && keywordSelector != '-' && keywordSelector != 'no-key') {
-                            try {
-                                obj.keywords = await page.$eval(`${keywordSelector}`, (result) => {
-                                    return result.innerText
-                                })
-                            } catch (e) {
-                                console.log('error evaluate keyword : ' + e)
-                            }
-                        }
-
-                        // refine abstract
-                        obj.abstract = obj.abstract.replaceAll('\n', ' ')
-                        obj.abstract = obj.abstract.replaceAll('\t', ' ')
-                        obj.abstract = obj.abstract.replaceAll(':', '')
-                        obj.abstract = obj.abstract.replaceAll('.', '')
-                        obj.abstract = obj.abstract.replaceAll(',', ' ')
-                        obj.abstract = obj.abstract.replaceAll('abstract', '')
-                        obj.abstract = obj.abstract.replaceAll('(', '')
-                        obj.abstract = obj.abstract.replaceAll(')', '')
-                        obj.abstract = obj.abstract.replace(/\s\s+/g, ' ')
-
-                        if (keywordSelector != 'no-key') {
-                            // refine keywords
-                            obj.keywords = obj.keywords.replaceAll('\n', ' ')
-                            obj.keywords = obj.keywords.replaceAll(',', '')
-                            obj.keywords = obj.keywords.replaceAll(';', '')
-                            obj.keywords = obj.keywords.replaceAll('Keywords:', '')
-                            obj.keywords = obj.keywords.replaceAll('Keywords', '')
-                            let keywords = obj.keywords
-                            obj.keywords = keywords[0]
-                            for (let i = 1; i < keywords.length; i++) {
-                                if (keywords[i].toUpperCase() === keywords[i] && keywords[i - 1] !== ' ' && keywords[i] !== '-' && keywords[i] !== ' ') {
-                                    obj.keywords += ' '
-                                } 
-                                obj.keywords += keywords[i]
-                            }
-                        }
-                        obj.keywords.toLowerCase()
-                    } else {
-                        // site url baru, insert
-                        await firedb.collection('abstract_possible_locations').add({
-                            full_url: pageURL,
-                            site_url: pageURL.substring(0, pageURL.indexOf('/', 10)),
-                            selector: '-',
-                            keyword_selector: '-',
-                        });
+                    const tempAuthors = $(".issue-item__authors").text()
+                    let authors = tempAuthors.charAt(0)
+                    for (let i = 1; i < tempAuthors.length; i++) {
+                        if (tempAuthors.charAt(i).toUpperCase() === tempAuthors.charAt(i) && tempAuthors.charAt(i - 1) !== ' ' && tempAuthors.charAt(i) !== ' ' && tempAuthors.charAt(i - 1).toUpperCase() !== tempAuthors.charAt(i - 1)) {
+                            authors += ', '
+                        } 
+                        authors += tempAuthors.charAt(i)
                     }
+        
+                    const publishYear = $(".issue-item__header").text().slice(-4)
 
-                    if ($(".gs_ggs.gs_fl").text() != '') {
-                        // jika ada direct link ( tidak berbayar )
-                        if ($(".gs_ggs.gs_fl > .gs_ggsd > .gs_or_ggsm > a > span").text().toLowerCase().includes("html")) {
-                            // link website, bukan .pdf harus masuk untuk dapetin .pdf
-                            const body = await page.$eval(`body`, (result) => {
-                                return result.innerHTML
-                            })
-                            const jq = await cheerio.load(body + "")
-
-                            // cari penempatan link pdf di semua kemungkinan
-                            for (let j = 0; j < POSSIBLE_PDF_PLACEMENT.length; j++) {
-                                obj.pdf = jq(`a:contains('${POSSIBLE_PDF_PLACEMENT[j]}')`).attr("href")
-                                if(obj.pdf) {
-                                    if(!obj.pdf.includes("https")) {
-                                        // jika pdf tidak mengandung base url
-                                        obj.pdf = pageURL.substring(0, pageURL.indexOf('/', 10)) + obj.pdf + ''
-                                    }
-                                    break
-                                }
-                            }
-                        } else {
-                            obj.pdf = $(".gs_ggs.gs_fl > .gs_ggsd > .gs_or_ggsm > a").attr("href")
-                        }
-                    } else {
-                        // tidak ada direct link pdf
-                        obj.free = false
+                    let keywords = ''
+                    let ctr = 1
+                    while (jq(`section[property='keywords'] > ol > li:nth-child(${ctr})`).text() !== '') {
+                        keywords += jq(`section[property='keywords'] > ol > li:nth-child(${ctr++})`).text() + ' '
                     }
+                    
+                    let citedCount = 0
+                    try {
+                        citedCount = parseInt(jq(".citing-articles > :nth-child(2)").text().substring(jq(".citing-articles > :nth-child(2)").text().indexOf(':') + 2))
+                    } catch (error) {
+                        citedCount = parseInt(jq(".citing-articles > :nth-child(2)").text().substring(jq(".citing-articles > :nth-child(2)").text().indexOf(':') + 2, jq(".citing-articles > :nth-child(2)").text().indexOf(' ', jq(".citing-articles > :nth-child(2)").text().indexOf(':') + 2)))
+                    }
+                    citedCount += parseInt(jq(".citing-articles > :nth-child(3)").text().substring(jq(".citing-articles > :nth-child(3)").text().indexOf(':') + 2))
+        
+                    let fullText = ''
+                    ctr = 1
+                    while (jq(`section#sec-${ctr}`).text() !== '') {
+                        fullText += jq(`section#sec-${ctr++}`).text() + ' '
+                    }
+    
+                    fullText = fullText.replaceAll('\n', ' ')
+                    fullText = fullText.replaceAll('\t', ' ')
+                    fullText = fullText.replaceAll(',', ' ')
+                    fullText = fullText.replaceAll('Introduction', '')
+                    fullText = fullText.replaceAll('.', ' ')
+                    fullText = fullText.replaceAll(':', '')
+                    fullText = fullText.replaceAll('(', '')
+                    fullText = fullText.replaceAll(')', '')
+                    fullText = fullText.replaceAll("'", '')
+                    fullText = fullText.replace(/\s\s+/g, ' ')
 
-                    // console.log(obj)
-
-                    // push
-                    if(obj.abstract != 'no-abs')
+                    const abstract = jq("#abstract > div").text()
+                    const spl = abstract.split('.')
+                    let content = ''
+                    ctr = 0
+                    for (let i = 0; i < spl.length && ctr < 2; i++) {
+                        if(spl[i].toLowerCase().includes(crawlInfo.simpleKeyword.toLowerCase())) {
+                            ctr++ 
+                            content += '...' + spl[i]
+                        }
+                    }
+                    if (ctr == 0) {
+                        try {
+                            content = (spl[0] + '. ' + spl[1] + '. ' + spl[2])
+                        } catch (error) {
+                            content = spl[0] + '. '
+                        }
+                    }
+                    content += '...'
+                    
+                    if (abstract.length > 0 && fullText.length > 0) {
                         crawlInfo.search_res_links.push({
-                            index: i + ((crawlInfo.pageNum * 10) - 10),
-                            g_id: $(".gs_ri > .gs_rt > a").attr("data-clk-atid"),
-                            title: $(".gs_ri > .gs_rt > a").text(),
-                            abstract: obj.abstract,
-                            keywords: obj.keywords,
-                            full_text: '-',
-                            references_count: 0,
-                            content: obj.content,
-                            cited_count: obj.cited_count.substring(9),
-                            authors: obj.authors,
-                            publisher: obj.publisher,
-                            publish_year: obj.publish_year,
-                            site: obj.site,
-                            free: obj.free,
-                            link: obj.link,
-                            pdf: obj.pdf,
+                            index: i + ((crawlInfo.pageNum) * 100),
+                            g_id: $("a.sage-search-title").attr("id"),
+                            title: $(".issue-item__heading").text(),
+                            abstract: abstract,
+                            keywords: keywords,
+                            full_text: fullText,
+                            references_count: jq("div[role='doc-biblioentry listitem']").length,
+                            content: content,
+                            cited_count: citedCount,
+                            authors: authors,
+                            publisher: 'SAGE Journals',
+                            publish_year: publishYear,
+                            site: 'journals.sagepub.com',
+                            free: true,
+                            link: jq(".doi").text(),
+                            pdf: pageURL.substring(0, pageURL.indexOf('/', 10)) + jq("a:contains('PDF')").attr("href"),
                             value: 0
                         })
-                } catch (e) {
-                    console.log(e)
-                    console.log("Link : " + $(".gs_ri > .gs_rt > a").attr("href"))
-                    if($(".gs_ri > .gs_rt > a").attr("href")) {
-                        if($(".gs_ri > .gs_rt > a").attr("href").includes('.pdf')
-                            || $(".gs_ri > .gs_rt > a").attr("href").includes('download')
-                            || $(".gs_ri > .gs_rt > a").attr("href").includes('document')
-                            || $(".gs_ri > .gs_rt > a").attr("href").includes('view')
-                            || $(".gs_ri > .gs_rt > a").attr("href").includes('index.php')){
-                            console.log("Skiped .pdf extension or not a website")
-                        } else{
-                            console.log(e)
-                        }
                     }
+                } catch (error) {
+                    console.log("error obtaining journal info i-" + (i + 1))
+                    console.log(error)
                 }
-            }
+            }    
+            
+            // next page
+            crawlInfo.pageNum++
+        }catch (e) {
+            console.log("error load html page : " + e)
+            console.log("reseting page : " + crawlInfo.pageNum)
+            crawlInfo.attempt++
         }
-    }
-
-    if(crawlInfo.pageNum < MAX_PAGE) {
-        // next page
-        crawlInfo.pageNum++
-        return await googleScholarCrawl(browser, page, keyword, crawlInfo)
     }
 
     return crawlInfo.search_res_links
 }
-
 
 // scd crawler setup
 const POSSIBLE_FULL_TEXT_REMOVAL = [
@@ -755,7 +626,11 @@ async function scienceDirectCrawl(page, keyword, crawlInfo) {
                             }
                         }
                         if (ctr == 0) {
-                            content += (spl[0] + '. ' + spl[1])
+                            try {
+                                content = (spl[0] + '. ' + spl[1] + '. ' + spl[2])
+                            } catch (error) {
+                                content = spl[0] + '. '
+                            }
                         }
                         content += '...'
                         
@@ -908,7 +783,11 @@ async function ieeeCrawl(page, keyword, crawlInfo) {
                             }
                         }
                         if (ctr == 0) {
-                            content += (spl[0] + '. ' + spl[1])
+                            try {
+                                content = (spl[0] + '. ' + spl[1] + '. ' + spl[2])
+                            } catch (error) {
+                                content = spl[0] + '. '
+                            }
                         }
                         content += '...'
     
@@ -1139,341 +1018,6 @@ function sleep(ms) {
         setTimeout(resolve, ms);
     });
 }
-
-function findDash(text, start) {
-    let index = start
-    let flag = false
-    do {
-        if(text.substr(text.indexOf('-', index) - 1, 3).indexOf(" ") == -1) {
-            index = text.indexOf('-', index) + 1
-            flag = true
-        } else {
-            index = text.indexOf('-', index)
-            flag = false
-        }
-    } while(flag)
-    return parseInt(index)
-}
-
-
-// API Testing  scholar crawler
-router.post('/googlescholar', async(req,res)=> {
-    if(req.body.keyword){
-        try{
-            let crawlInfo = {
-                search_res_links: [],
-                pageNum : 1,
-                attempt : 1,
-                yearStart: '',
-                yearEnd: ''
-            }
-            const browser = await puppeteer.launch({
-                'args' : [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--start-maximized',
-                ],
-                defaultViewport: null,
-                headless: true
-            })
-            const page = await browser.newPage()
-
-            const searchResLinks = await googleScholarCrawl(browser, page, req.body.keyword, crawlInfo)
-
-            // await browser.close()
-
-            cosineSimilarity(searchResLinks, req.body.keyword, 1)
-
-            cosineSimilarity(searchResLinks, req.body.keyword, 2)
-
-            return res.status(200).json({
-                'message': 'Crawl Berhasil!',
-                'data': {searchResLinks},
-                'data2': {cosine},
-                'status': 'Success'
-            });
-        }catch(e) {
-            console.log(e)
-            return res.status(501).json({
-                'message': 'Error crawling',
-                'data':{e
-                },
-                'status': 'Error'
-            });
-        }
-    }else{
-        return res.status(401).json({
-            'message': 'Inputan Belum lengkap!',
-            'data':{
-            },
-            'status': 'Error'
-        });
-    }
-});
-
-// API Testing another crawl
-router.post('/scd', async (req, res) => {
-    try{
-        let yearStart = '-'
-        let yearEnd = '-'
-        let date = ''
-        if(yearStart !== '-' && yearEnd !== '-') {
-            date = yearStart + '-' + yearEnd
-        } else if (yearStart !== '-') {
-            date = yearStart 
-        } else if (yearEnd !== '-') {
-            date = yearEnd 
-        }
-
-        let crawlInfo = {
-            search_res_links: [],
-            pageNum : 1,
-            attempt : 1,
-            date: date,
-            simpleKeyword: req.body.keyword
-        }
-        const browser = await puppeteer.launch({
-            'args' : [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--start-maximized',
-            ],
-            defaultViewport: null,
-            headless: true
-        })
-        const page = await browser.newPage()
-
-        let results = await scienceDirectCrawl(page, req.body.keyword, crawlInfo)
-
-        await browser.close()
-
-        let cosinusKeyword = req.body.simple + " " + req.body.factors
-        cosinusKeyword.toLowerCase()
-    
-        // cosinus sim 2 after cosineSimilarity
-        journalsEvaluation(results, cosinusKeyword, req.body.simple, req.body.factors, req.body.searchFactors, 1)
-    
-        // ranking with KMA
-        results = KMA(results, results.length, Math.ceil(results.length / 2) + 5, 100, 5)
-        let finalResult = []
-        let titleOnly = []
-        for(let i = 0; i < results.length; i++) {
-            titleOnly.push(results[i].journal.title)
-            finalResult.push({
-                "index": results[i].journal.index,
-                "title": results[i].journal.title,
-                "abstractVal": results[i].journal.abstractVal,
-                "keywordsVal": results[i].journal.keywordsVal,
-                "fullTextVal": results[i].journal.fullTextVal,
-                "referencesVal": results[i].journal.referencesVal,
-                "citedVal": results[i].journal.citedVal,
-                "factorSenSim": results[i].journal.factorSenSim,
-                "factorSF": results[i].journal.factorSF,
-                "factor": results[i].journal.factor,
-                "value1": results[i].journal.value1,
-                "value2": results[i].journal.value2,
-                "value3": results[i].journal.value3,
-                "x": results[i].x,
-                "y": results[i].y,
-                "z": results[i].z,
-                "fitness": results[i].fitness,
-            })
-        }
-
-        return res.status(200).json({
-            'message': 'Crawl Berhasil!',
-            'titleOnly': titleOnly,
-            'data': {finalResult},
-            'results': {results},
-            'status': 'Success'
-        });
-    }catch(e) {
-        console.log(e)
-        return res.status(501).json({
-            'message': 'Error crawling',
-            'data':{e
-            },
-            'status': 'Error'
-        });
-    }
-});
-
-// API Testing ieee
-router.post('/ieee', async (req, res) => {
-    try{
-        let keyword = req.body.keyword
-        let yearStart = '-'
-        let yearEnd = '-'
-        let date = ''
-        if(yearStart !== '-' && yearEnd !== '-') {
-            date = `&ranges=${yearStart}_${yearEnd}_Year`
-        } else if (yearStart !== '-') {
-            date = `&ranges=${yearStart}_${yearStart}_Year`
-        } else if (yearEnd !== '-') {
-            date = `&ranges=${yearEnd}_${yearEnd}_Year`
-        }
-
-        let crawlInfo = {
-            search_res_links: [],
-            pageNum : 1,
-            attempt : 1,
-            date: date,
-            simpleKeyword: req.body.simple
-        }
-        const browser = await puppeteer.launch({
-            'args' : [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--start-maximized',
-            ],
-            defaultViewport: null,
-            headless: true
-        })
-        const page = await browser.newPage()
-
-        let results = await ieeeCrawl(page, keyword, crawlInfo)
-
-        await browser.close()
-
-        let cosinusKeyword = req.body.simple + " " + req.body.factors
-        cosinusKeyword.toLowerCase()
-    
-        // cosinus sim 2 after cosineSimilarity
-        journalsEvaluation(results, cosinusKeyword, req.body.simple, req.body.factors, 2)
-    
-        // ranking with KMA
-        results = KMA(results, results.length, Math.ceil(results.length / 2) + 5, 100, 5, 2)
-        let finalResult = []
-        let titleOnly = []
-        for(let i = 0; i < results.length; i++) {
-            titleOnly.push(results[i].journal.title)
-            finalResult.push({
-                "index": results[i].journal.index,
-                "title": results[i].journal.title,
-                "abstractVal": results[i].journal.abstractVal,
-                "keywordsVal": results[i].journal.keywordsVal,
-                "fullTextVal": results[i].journal.fullTextVal,
-                "referencesVal": results[i].journal.referencesVal,
-                "citedVal": results[i].journal.citedVal,
-                "factorSenSim": results[i].journal.factorSenSim,
-                "factorSF": results[i].journal.factorSF,
-                "factor": results[i].journal.factor,
-                "value1": results[i].journal.value1,
-                "value2": results[i].journal.value2,
-                "value3": results[i].journal.value3,
-                "x": results[i].x,
-                "y": results[i].y,
-                "z": results[i].z,
-                "fitness": results[i].fitness,
-            })
-        }
-
-        return res.status(200).json({
-            'message': 'Crawl Berhasil!',
-            'titleOnly': titleOnly,
-            'data': {finalResult},
-            'results': {results},
-            'status': 'Success'
-        });
-    }catch(e) {
-        console.log(e)
-        return res.status(501).json({
-            'message': 'Error crawling',
-            'data':{e
-            },
-            'status': 'Error'
-        });
-    }
-});
-
-// API Testing acd
-router.post('/acd', async (req, res) => {
-    try{
-        let keyword = 'q=' + req.body.keyword
-        let yearStart = '2021'
-        let yearEnd = '-'
-        let date = ''
-        if(yearStart !== '-' && yearEnd !== '-') {
-            date = `&rg_ArticleDate=01/01/${yearStart}%20TO%2012/31/${yearEnd}&dateFilterType=range&noDateTypes=true&rg_SearchResultsPublicationDate=01/01/${yearStart}%20TO%2012/31/${yearEnd}&rg_VersionDate=01/01/${yearStart}%20TO%2012/31/${yearEnd}`
-        } else if (yearStart !== '-') { 
-            date = `&rg_ArticleDate=01/01/${yearStart}%20TO%2012/31/2999&dateFilterType=range&noDateTypes=true&rg_SearchResultsPublicationDate=01/01/${yearStart}%20TO%2012/31/2999&rg_VersionDate=01/01/${yearStart}%20TO%2012/31/2999`
-        } else if (yearEnd !== '-') {
-            date = `&rg_ArticleDate=01/01/1980%20TO%2012/31/${yearEnd}&dateFilterType=range&noDateTypes=true&rg_SearchResultsPublicationDate=01/01/1980%20TO%2012/31/${yearEnd}&rg_VersionDate=01/01/1980%20TO%2012/31/${yearEnd}`
-        }
-        
-
-        let crawlInfo = {
-            search_res_links: [],
-            pageNum : 1,
-            attempt : 1,
-            date: date
-        }
-        const browser = await puppeteer.launch({
-            'args' : [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--start-maximized',
-            ],
-            defaultViewport: null,
-            headless: true
-        })
-        const page = await browser.newPage()
-
-        let results = await academicCrawl(page, keyword, crawlInfo)
-
-        await browser.close()
-
-        let cosinusKeyword = req.body.simple + " " + req.body.factors
-        cosinusKeyword.toLowerCase()
-    
-        // cosinus sim 2 after cosineSimilarity
-        journalsEvaluation(results, cosinusKeyword, req.body.simple, req.body.factors, 3)
-    
-        // ranking with KMA
-        results = KMA(results, results.length, Math.ceil(results.length / 2) + 5, 100, 5, 2)
-        let finalResult = []
-        let titleOnly = []
-        for(let i = 0; i < results.length; i++) {
-            titleOnly.push(results[i].journal.title)
-            finalResult.push({
-                "index": results[i].journal.index,
-                "title": results[i].journal.title,
-                "abstractVal": results[i].journal.abstractVal,
-                "keywordsVal": results[i].journal.keywordsVal,
-                "fullTextVal": results[i].journal.fullTextVal,
-                "referencesVal": results[i].journal.referencesVal,
-                "citedVal": results[i].journal.citedVal,
-                "factorSenSim": results[i].journal.factorSenSim,
-                "factorSF": results[i].journal.factorSF,
-                "factor": results[i].journal.factor,
-                "value1": results[i].journal.value1,
-                "value2": results[i].journal.value2,
-                "value3": results[i].journal.value3,
-                "x": results[i].x,
-                "y": results[i].y,
-                "z": results[i].z,
-                "fitness": results[i].fitness,
-            })
-        }
-
-        return res.status(200).json({
-            'message': 'Crawl Berhasil!',
-            'titleOnly': titleOnly,
-            'data': {finalResult},
-            'results': {results},
-            'status': 'Success'
-        });
-    }catch(e) {
-        console.log(e)
-        return res.status(501).json({
-            'message': 'Error crawling',
-            'data':{e
-            },
-            'status': 'Error'
-        });
-    }
-});
-
 
 
 
@@ -1839,13 +1383,14 @@ function journalsEvaluation (docs, cosinusKeyword, simpleKeyword, sfKeyword, sea
     // baru cosine similarity npm lagi dengan keyword + sf 
     // kemudian val = (npm + handmade) / 2 
     // kemudian dicari factor = factorSenSim (40%) + factorSF (60%)
-    // factorSF berasal dari (60% sensim dengan literal search factors) + (40% npm cosine sim dengan sfkeyword + 0.1 * wordsim dengan sfkeyword)
+    // factorSF berasal dari (60% sensim dengan literal search factors, karena ada sf yang lebih dari 1 kata cth machine learning) + (40% npm cosine sim dengan sfkeyword + 0.1 * wordsim dengan sfkeyword)
     // factorSF -> untuk mencegah journal yang tidak sesuai dengan background (search factor) pencarian user 
-    // factorSenSim -> untuk mencegah journal yang tidak mengandung keyword secara literal (genetic algorithm bukan genetic human hair, best algorithm)
+    // factorSenSim -> untuk mencegah journal yang tidak mengandung keyword secara literal (genetic algorithm bukan genetic human hair, atau best algorithm)
     // factor akan memengaruhi fitness value, semakin mendekati 1 (max) maka journal = semakin relevant
 }
 
 // query -> simpleKeyword, mode 1 = abstract, 2 = keywords, 3 = fulltext
+// return max senSim dan senSim untuk setiap DOKUMEN sesuai dengan mode
 function sentenceSimilarity (docs, query, mode) { 
     // build newQuery for regExp creation
     let newQuery = query.charAt(0)
@@ -1919,7 +1464,7 @@ function wordSimilarity (docs, query, mode) {
             if (mode === 1) {
                 const temp = docs[i].abstract.match(newQuery[j])
                 if (temp) {
-                    docs[i].abstractWordSim += temp.length + 1
+                    docs[i].abstractWordSim += (temp.length + 1)
                 } else {
                     docs[i].abstractWordSim++
                 }
@@ -1930,7 +1475,7 @@ function wordSimilarity (docs, query, mode) {
             } else if (mode === 2) {
                 const temp = docs[i].keywords.match(newQuery[j])
                 if (temp) {
-                    docs[i].keywordsWordSim += temp.length + 1
+                    docs[i].keywordsWordSim += (temp.length + 1)
                 } else {
                     docs[i].keywordsWordSim++
                 }
@@ -1941,7 +1486,7 @@ function wordSimilarity (docs, query, mode) {
             } else {
                 const temp = docs[i].full_text.match(newQuery[j])
                 if (temp) {
-                    docs[i].fullTextWordSim += temp.length + 1
+                    docs[i].fullTextWordSim += (temp.length + 1)
                 } else {
                     docs[i].fullTextWordSim++
                 }

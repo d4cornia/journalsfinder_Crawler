@@ -6,6 +6,13 @@ const pool = mysql.createPool({
     database: "XMMdWlz3OZ"
 });
 
+// var pool = mysql.createPool({
+//     host: "localhost",
+//     user: "root",
+//     password: "",
+//     database: "journal_finder"
+// });
+
 const q = async (query, param) => {
     return new Promise((resolve, reject) => {
         pool.query(query, param, (err, rows, fields) => {
