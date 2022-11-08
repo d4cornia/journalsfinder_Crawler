@@ -116,6 +116,8 @@ function KMA (journals, initPop, minPop, maxPop, initIncDecAdaPop, crawlerOpt) {
                 adaPopSize = minPop
             }
 
+            rankKomodos(newGenKomodos)
+
             // delete komodo yang paling bawah (worst fitness)
             newGenKomodos.length = adaPopSize
 
@@ -130,11 +132,11 @@ function KMA (journals, initPop, minPop, maxPop, initIncDecAdaPop, crawlerOpt) {
                 reposition(newGenKomodos[i])
             }
 
+            rankKomodos(newGenKomodos)
+
             // reset ctr
             genStagnan = 0
         }
-
-        rankKomodos(newGenKomodos)
 
         // replace old gen with new gen
         komodos = newGenKomodos
@@ -156,9 +158,9 @@ function stoppingCriterion (gen, totalGenImprove) {
 // menghitung fitness, semakin KECIL dif semakin BAIK
 // f function, (n = 3 dimensi), fitness function -> selisih optimum fitness dengan fitness komodo
 function f (x, y, z, factor) {
-    const xdif = Math.abs(OPTIMUM_X - (x * factor))
-    const ydif = Math.abs(OPTIMUM_Y - (y * factor))
-    const zdif = Math.abs(OPTIMUM_Z - (z * factor))
+    const xdif = OPTIMUM_X - (x * factor)
+    const ydif = OPTIMUM_Y - (y * factor)
+    const zdif = OPTIMUM_Z - (z * factor)
     return (xdif * xdif) + (ydif * ydif) + (zdif * zdif)
 }
 

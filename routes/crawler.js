@@ -56,7 +56,7 @@ router.post('/crawlAndRank', cekJWT, async (req, res) => {
 });
 
 // focused crawler and ranking
-// crawlerOpt : 0 : scholar, 1: scd, 2:ieee, 3:acd
+// crawlerOpt : 0 : sage, 1: scd, 2:ieee, 3:acd
 async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, yearStart, yearEnd, crawlerOpt = 1) {
     let results = []
     let simpleKeyword = '-' // untuk journal evaluation
