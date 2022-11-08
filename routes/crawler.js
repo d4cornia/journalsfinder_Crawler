@@ -23,7 +23,19 @@ const {
 router.post('/crawlAndRank', cekJWT, async (req, res) => {
     if (req.body.keyword && req.body.ogKeyword && req.body.yearStart && req.body.yearEnd){
         // get user search factor
-        const sf = await db.query(`SELECT * FROM search_factors WHERE user_id=${req.user.id} AND deleted_at IS NULL`)
+        const sf = await db.query(`SELECT * FROM search_factors WHERE user_id=${req.user.id} AND status=1 AND deleted_at IS NULL`)
+        const factors = []
+        for (let i = 0; i < sf.length; i++){
+            factors.push({
+                id: sf[i].id,
+                factor: sf[i].factor,
+                sub_factor: sf[i].sub_factor,
+            })
+        }
+
+        // add new user log
+        const userLogId = await addNewUserLog(req, factors)
+
         // crawl and ranking
         const results = await crawlAndRank(req.body.keyword, req.body.ogKeyword, sf, true, req.body.yearStart, req.body.yearEnd, parseInt(req.body.crawlerOpt))
 
@@ -34,11 +46,8 @@ router.post('/crawlAndRank', cekJWT, async (req, res) => {
             });
         }
 
-        // add new user log
-        const userLogId = await addNewUserLog(req)
-
-        // insert journal result dan bindkan dengan userLogId
-        await addJournalsResult(userLogId, results)
+        // insert journal result dan bindkan dengan userLogId, dan update user log status
+        await addJournalsResult(req, userLogId, results, factors)
 
         // jika tidak timeout maka akan dikembalikan keynya (userLogId) langsung
         return res.status(200).json({
@@ -225,23 +234,9 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
 }
 
 // insert new user_log keyword setelah crawl dan ranking, dan returnkan key
-async function addNewUserLog (req) {
+async function addNewUserLog (req, factors) {
     // * id yang di auto generate (user_log_id) akan disimpan di firebase tabel (journals_result)
     //   agar tau hasil crawl dan ranking berasal dari search keyword apa dan search factornya apa
-    // * cron job crawl dan ranking akan dilakukan untuk user_logs yang status 2
-
-    let data = await db.query(`SELECT * FROM search_factors WHERE user_id=${req.user.id} AND status=1 AND deleted_at IS NULL`)
-
-    // insert new user log
-    const factors = []
-
-    for (let i = 0; i < data.length; i++){
-        factors.push({
-            id: data[i].id,
-            factor: data[i].factor,
-            sub_factor: data[i].sub_factor,
-        })
-    }
 
     // composite primary key (user_id, factors, keyword)
     data = await firedb.collection('user_logs').add({
@@ -252,7 +247,7 @@ async function addNewUserLog (req) {
         year_start: req.body.yearStart,
         year_end: req.body.yearEnd,
         crawler_opt: parseInt(req.body.crawlerOpt), // apakah open journal aja atau tidak
-        status: 2, // untuk cron job melakukan fully focused crawled and ranked
+        status: 3, // masih loading crawl and rank dari proses search / advanced search
         created_at: new Date(),
         deleted_at: null
     });
@@ -262,7 +257,21 @@ async function addNewUserLog (req) {
 }
 
 // insert new semua results dari hasil crawl dan ranking dan assign ke user_log_id
-async function addJournalsResult (userLogId, results) {
+async function addJournalsResult (req, userLogId, results, factors) {
+    // UPDATE USER LOG JADI SELESAI CRAWL AND RANK status = 2
+    await firedb.collection('user_logs').doc(`${userLogId}`).set({
+        user_id: req.user.id,
+        factors,
+        keyword: req.body.keyword,
+        og_keyword: req.body.ogKeyword, 
+        year_start: req.body.yearStart,
+        year_end: req.body.yearEnd,
+        crawler_opt: parseInt(req.body.crawlerOpt),
+        status: 2,  // crawl and rank finished, but not fully crawled by cron job
+        created_at: new Date(),
+        deleted_at: null
+    })
+
     for (let i = 0; i < results.length; i++) {
         await firedb.collection('journals_result').add({
             rank: (i + 1),
@@ -298,12 +307,15 @@ router.post('/searchResult', cekJWT, async (req, res) => {
         });
 
         // cek pernah ga search result ini diarchive oleh user, Jika ya simpan data id journal
+        const data = await db.query(`SELECT * FROM journals WHERE user_id=${req.user.id} AND STATUS=1 AND deleted_at IS NULL`)
         for (let i = 0; i < hasil.length; i++) {
             hasil[i].journal_id = -1
-            const data = await db.query(`SELECT id FROM journals WHERE g_id='${hasil[i].g_id}' AND user_id=${req.user.id} AND deleted_at IS NULL`)
-            if (data.length > 0) {
-                // pernah
-                hasil[i].journal_id = data[0].id
+            for (let j = 0; j < data.length; j++) {
+                if (hasil[i].g_id === data[j].g_id) {
+                    // pernah
+                    hasil[i].journal_id = data[j].id
+                    break
+                }
             }
         }
 
@@ -313,7 +325,7 @@ router.post('/searchResult', cekJWT, async (req, res) => {
             'status': 'Success'
         });
     }else{
-        return res.status(401).json({
+        return res.status(400).json({
             'message': 'Inputan Belum lengkap!',
             'data':{
             },
