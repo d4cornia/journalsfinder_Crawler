@@ -272,6 +272,7 @@ async function addJournalsResult (req, userLogId, results, factors) {
         deleted_at: null
     })
 
+    console.log(results.length)
     for (let i = 0; i < results.length; i++) {
         await firedb.collection('journals_result').add({
             rank: (i + 1),
@@ -376,6 +377,7 @@ async function sageCrawl(page, keyword, crawlInfo) {
             })
 
             for (let i = 0; i < searchResRaw.length; i++) {
+                console.log('sage length : ' + crawlInfo.search_res_links.length)
                 if (crawlInfo.search_res_links.length === MAX_CRAWL_DATA_SAGE) {
                     return crawlInfo.search_res_links
                 }
@@ -444,7 +446,13 @@ async function sageCrawl(page, keyword, crawlInfo) {
                     fullText = fullText.replaceAll("'", '')
                     fullText = fullText.replace(/\s\s+/g, ' ')
 
-                    const abstract = jq("#abstract > div").text()
+                    let abstract = jq("#abstract > div").text()
+                    if (abstract.length == 0) {
+                        abstract = jq("#abstract").text()
+                    }
+                    abstract = abstract.replaceAll(':', '')
+                    abstract = abstract.replace(/\s\s+/g, ' ')
+
                     const spl = abstract.split('.')
                     let content = ''
                     ctr = 0
@@ -482,6 +490,12 @@ async function sageCrawl(page, keyword, crawlInfo) {
                             link: jq(".doi").text(),
                             pdf: pageURL.substring(0, pageURL.indexOf('/', 10)) + jq("a:contains('PDF')").attr("href"),
                             value: 0
+                        })
+                    } else {
+                        console.log({
+                            link: jq(".doi").text(),
+                            abstract: abstract,
+                            keywords: keywords,
                         })
                     }
                 } catch (error) {
