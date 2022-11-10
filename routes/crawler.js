@@ -40,6 +40,21 @@ router.post('/crawlAndRank', cekJWT, async (req, res) => {
         const results = await crawlAndRank(req.body.keyword, req.body.ogKeyword, sf, true, req.body.yearStart, req.body.yearEnd, parseInt(req.body.crawlerOpt))
 
         if (results.error) {
+            if (results.error === 'timeout') {
+                await firedb.collection('user_logs').doc(`${userLogId}`).set({
+                    user_id: req.user.id,
+                    factors,
+                    keyword: req.body.keyword,
+                    og_keyword: req.body.ogKeyword, 
+                    year_start: req.body.yearStart,
+                    year_end: req.body.yearEnd,
+                    crawler_opt: parseInt(req.body.crawlerOpt),
+                    status: -1,  // timeout error, re crawl and rank lagi
+                    created_at: new Date(),
+                    deleted_at: null
+                })
+            }
+
             return res.status(200).json({
                 'msg': results.msg,
                 'status': 'Failed'
@@ -194,7 +209,7 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
         if (e.name === 'TimeoutError') {
             return {
                 'error': 'timeout',
-                'msg': 'Crawler Website Timeout, Please Refresh The Page'
+                'msg': 'Crawler Website Timeout, Please Try Again Later'
             }
         }
         return {
