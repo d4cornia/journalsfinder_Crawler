@@ -1,10 +1,13 @@
-const mysql = require("mysql");
-const pool = mysql.createPool({
-    host: "remotemysql.com",
-    user: "XMMdWlz3OZ",
-    password: "ExpGj7pYJn",
-    database: "XMMdWlz3OZ"
-});
+const mysql = require("mysql2");
+const connection = mysql.createConnection(process.env.DATABASE_URL)
+
+// const mysql = require("mysql");
+// const pool = mysql.createPool({
+//     host: "remotemysql.com",
+//     user: "XMMdWlz3OZ",
+//     password: "ExpGj7pYJn",
+//     database: "XMMdWlz3OZ"
+// });
 
 // var pool = mysql.createPool({
 //     host: "localhost",
@@ -15,7 +18,7 @@ const pool = mysql.createPool({
 
 const q = async (query, param) => {
     return new Promise((resolve, reject) => {
-        pool.query(query, param, (err, rows, fields) => {
+        connection.query(query, param, (err, rows, fields) => {
             if (err) reject(err);
             else resolve(rows);
         })

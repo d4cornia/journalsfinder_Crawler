@@ -425,7 +425,11 @@ async function sageCrawl(page, keyword, crawlInfo) {
                         if (tempAuthors.charAt(i).toUpperCase() === tempAuthors.charAt(i) && tempAuthors.charAt(i - 1) !== ' ' && tempAuthors.charAt(i) !== ' ' && tempAuthors.charAt(i - 1).toUpperCase() !== tempAuthors.charAt(i - 1)) {
                             authors += ', '
                         } 
-                        authors += tempAuthors.charAt(i)
+                        if (tempAuthors.charAt(i) !== "'") {
+                            authors += tempAuthors.charAt(i)
+                        } else {
+                            authors += ' '
+                        }
                     }
         
                     const publishYear = $(".issue-item__header").text().slice(-4)
@@ -611,7 +615,11 @@ async function scienceDirectCrawl(page, keyword, crawlInfo) {
                             if (tempAuthors.charAt(i).toUpperCase() === tempAuthors.charAt(i) && tempAuthors.charAt(i - 1) !== ' ' && tempAuthors.charAt(i) !== ' ' && tempAuthors.charAt(i - 1).toUpperCase() !== tempAuthors.charAt(i - 1)) {
                                 authors += ', '
                             } 
-                            authors += tempAuthors.charAt(i)
+                            if (tempAuthors.charAt(i) !== "'") {
+                                authors += tempAuthors.charAt(i)
+                            } else {
+                                authors += ' '
+                            }
                         }
             
                         const publishYear = $(".srctitle-date-fields").text().slice(-4)
@@ -833,6 +841,7 @@ async function ieeeCrawl(page, keyword, crawlInfo) {
                         content += '...'
     
                         let authors = $('p.author').text()
+                        authors = authors.replaceAll("'", ' ')
                         authors = authors.replaceAll(';', ', ')
     
                         let fullText = ""
