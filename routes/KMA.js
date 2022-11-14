@@ -16,9 +16,9 @@ const OPTIMUM_RADIUS = 0.07
 const OFFSET = 10
 // max dari x y z / upperbound
 const Ra = {
-    'x' : 3, 
-    'y' : 3, 
-    'z' : 3
+    'x' : 10, 
+    'y' : 10, 
+    'z' : 10
 }
 // min dari x y z / lowerbound
 const Rb = {

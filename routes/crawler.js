@@ -599,7 +599,7 @@ async function scienceDirectCrawl(page, keyword, crawlInfo) {
                                 timeout: 5000,
                                 waitUntil: 'domcontentloaded'
                             }), page.waitForSelector('.Body > div > section', {
-                                timeout: 3000
+                                timeout: 5000
                             })
                         ])
             
@@ -1061,7 +1061,6 @@ async function academicCrawl(page, keyword, crawlInfo) {
     return crawlInfo.search_res_links
 }
 
-
 // CRAWLER HELPER
 function sleep(ms) {
     return new Promise((resolve) => {
@@ -1389,24 +1388,16 @@ function journalsEvaluation (docs, cosinusKeyword, simpleKeyword, sfKeyword, sea
         docs[i].citedVal = parseInt(docs[i].cited_count) / maxCited 
         docs[i].referencesVal = docs[i].references_count / maxRef 
 
-        if (crawlerOpt > 0) {
-            docs[i].factorSenSim = (docs[i].factorSenSimAbs
-                                    + docs[i].factorSenSimKey 
-                                    + docs[i].factorSenSimFT) * 1.0 / 3.0
-    
-            docs[i].factorSF = 0
-            if (sfKeyword.length > 0) {
-                docs[i].factorSF = (docs[i].factorSFAbs
-                                    + docs[i].factorSFKey 
-                                    + docs[i].factorSFFt) * 1.0 / 3.0
-            }
-        } else {
-            docs[i].factorSenSim = (docs[i].factorSenSimAbs + docs[i].factorSenSimKey) * 1.0 / 2.0
-    
-            docs[i].factorSF = 0
-            if (sfKeyword.length > 0) {
-                docs[i].factorSF = (docs[i].factorSFAbs + docs[i].factorSFKey) * 1.0 / 2.0
-            }
+        
+        docs[i].factorSenSim = (docs[i].factorSenSimAbs
+            + docs[i].factorSenSimKey 
+            + docs[i].factorSenSimFT) * 1.0 / 3.0
+
+        docs[i].factorSF = 0
+        if (sfKeyword.length > 0) {
+            docs[i].factorSF = (docs[i].factorSFAbs
+                        + docs[i].factorSFKey 
+                        + docs[i].factorSFFt) * 1.0 / 3.0
         }
 
         // mencari max factor sensim dan sf untuk normalisasi
@@ -1550,6 +1541,167 @@ function wordSimilarity (docs, query, mode) {
 
     return max
 }
+
+// testing kma
+router.post('/kma', async (req, res) => {
+    const journals = [
+        {
+            g_id: 1,
+            abstractVal: 0.55,
+            keywordsVal: 0.32,
+            citedVal: 0.7,
+            referencesVal: 0.2,
+            fullTextVal: 0.29,
+            factor: 0.24,
+        },
+        {
+            g_id: 2,
+            abstractVal: 0.60,
+            keywordsVal: 0.54,
+            citedVal: 0.5,
+            referencesVal: 0.6,
+            fullTextVal: 0.67,
+            factor: 0.52,
+        },
+        {
+            g_id: 3,
+            abstractVal: 0.81,
+            keywordsVal: 0.9,
+            citedVal: 0.55,
+            referencesVal: 0.66,
+            fullTextVal: 0.78,
+            factor: 0.67,
+        },
+        {
+            g_id: 4,
+            abstractVal: 0.95,
+            keywordsVal: 0.88,
+            citedVal: 0.91,
+            referencesVal: 0.95,
+            fullTextVal: 0.92,
+            factor: 0.86,
+        },
+        {
+            g_id: 5,
+            abstractVal: 0.89,
+            keywordsVal: 0.92,
+            citedVal: 0.77,
+            referencesVal: 0.676,
+            fullTextVal: 0.85,
+            factor: 0.76,
+        },
+        {
+            g_id: 6,
+            abstractVal: 0.77,
+            keywordsVal: 0.45,
+            citedVal: 0.69,
+            referencesVal: 0.68,
+            fullTextVal: 0.71,
+            factor: 0.59,
+        },
+        {
+            g_id: 7,
+            abstractVal: 0.33,
+            keywordsVal: 0.15,
+            citedVal: 0.9,
+            referencesVal: 0.45,
+            fullTextVal: 0.39,
+            factor: 0.21,
+        },
+        {
+            g_id: 8,
+            abstractVal: 0.45,
+            keywordsVal: 0.17,
+            citedVal: 0.19,
+            referencesVal: 0.6,
+            fullTextVal: 0.43,
+            factor: 0.32,
+        },
+    ]
+    
+    // const journals = [
+    //     {
+    //         g_id: 1,
+    //         abstractVal: 0,
+    //         keywordsVal: 0,
+    //         citedVal: 0,
+    //         referencesVal: 0,
+    //         fullTextVal: 0,
+    //         factor: 0,
+    //     },
+    //     {
+    //         g_id: 2,
+    //         abstractVal: 0,
+    //         keywordsVal: 0,
+    //         citedVal: 0,
+    //         referencesVal: 0,
+    //         fullTextVal: 0,
+    //         factor: 0,
+    //     },
+    //     {
+    //         g_id: 3,
+    //         abstractVal: 0,
+    //         keywordsVal: 0,
+    //         citedVal: 0,
+    //         referencesVal: 0,
+    //         fullTextVal: 0,
+    //         factor: 0,
+    //     },
+    //     {
+    //         g_id: 4,
+    //         abstractVal: 0,
+    //         keywordsVal: 0,
+    //         citedVal: 0,
+    //         referencesVal: 0,
+    //         fullTextVal: 0,
+    //         factor: 0,
+    //     },
+    //     {
+    //         g_id: 5,
+    //         abstractVal: 0,
+    //         keywordsVal: 0,
+    //         citedVal: 0,
+    //         referencesVal: 0,
+    //         fullTextVal: 0,
+    //         factor: 0,
+    //     },
+    //     {
+    //         g_id: 6,
+    //         abstractVal: 0,
+    //         keywordsVal: 0,
+    //         citedVal: 0,
+    //         referencesVal: 0,
+    //         fullTextVal: 0,
+    //         factor: 0,
+    //     },
+    //     {
+    //         g_id: 7,
+    //         abstractVal: 0,
+    //         keywordsVal: 0,
+    //         citedVal: 0,
+    //         referencesVal: 0,
+    //         fullTextVal: 0,
+    //         factor: 0,
+    //     },
+    //     {
+    //         g_id: 8,
+    //         abstractVal: 0,
+    //         keywordsVal: 0,
+    //         citedVal: 0,
+    //         referencesVal: 0,
+    //         fullTextVal: 0,
+    //         factor: 0,
+    //     },
+    // ]
+
+    const results = KMA(journals, journals.length, 6, 100, 1, 1)
+
+    return res.status(200).json({
+        'init': journals,
+        'results': results,
+        'status': 'Success'
+    });
+});
 
 
 module.exports = router
