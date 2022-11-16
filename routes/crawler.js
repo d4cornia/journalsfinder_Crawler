@@ -38,20 +38,19 @@ router.post('/crawlAndRank', cekJWT, async (req, res) => {
         const results = await crawlAndRank(req.body.keyword, req.body.ogKeyword, sf, true, req.body.yearStart, req.body.yearEnd, parseInt(req.body.crawlerOpt))
 
         if (results.error) {
-            if (results.error === 'timeout') {
-                await firedb.collection('user_logs').doc(`${userLogId}`).set({
-                    user_id: req.user.id,
-                    factors,
-                    keyword: req.body.keyword,
-                    og_keyword: req.body.ogKeyword, 
-                    year_start: req.body.yearStart,
-                    year_end: req.body.yearEnd,
-                    crawler_opt: parseInt(req.body.crawlerOpt),
-                    status: -1,  // timeout error, re crawl and rank lagi
-                    created_at: new Date(),
-                    deleted_at: null
-                })
-            }
+            // crawl error
+            await firedb.collection('user_logs').doc(`${userLogId}`).set({
+                user_id: req.user.id,
+                factors,
+                keyword: req.body.keyword,
+                og_keyword: req.body.ogKeyword, 
+                year_start: req.body.yearStart,
+                year_end: req.body.yearEnd,
+                crawler_opt: parseInt(req.body.crawlerOpt),
+                status: -1,  // timeout error, re crawl and rank lagi
+                created_at: new Date(),
+                deleted_at: null
+            })
 
             return res.status(200).json({
                 'msg': results.msg,
@@ -104,12 +103,22 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--start-maximized',
+                '--ignore-certificate-errors'
             ],
             defaultViewport: null,
             headless: headless
         })
         const [page] = await browser.pages()
         await page.setUserAgent("Mozilla/5.0 (X11; Linux armv7l) AppleWebKit/537.36 (KHTML, like Gecko) Raspbian Chromium/108.0.5351.0 Chrome/108.0.5351.0 Safari/537.36")
+        await page.setRequestInterception(true)
+        page.on('request', (req) => {
+            if(req.resourceType() == 'stylesheet' || req.resourceType() == 'font' || req.resourceType() == 'image'){
+                req.abort();
+            }
+            else {
+                req.continue();
+            }
+        })
 
         // crawl bedasarkan crawl opt
         if (crawlerOpt === 0) {
@@ -213,7 +222,7 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
         }
         return {
             'error': 'crawl',
-            'msg': 'Crawler Crashed'
+            'msg': 'Crawler Crashed, Please Try Again Later'
         }
     }
 
@@ -354,7 +363,7 @@ const MAX_RESET = 4
 
 // sage crawler setup
 const MAX_PAGE_SAGE = 3 // per page 100
-let MAX_CRAWL_DATA_SAGE = 30
+let MAX_CRAWL_DATA_SAGE = 25
 
 // target 'https://journals.sagepub.com'
 async function sageCrawl(page, keyword, crawlInfo) {
@@ -543,7 +552,7 @@ const POSSIBLE_FULL_TEXT_REMOVAL = [
     'CRediT authorship'
 ]
 const MAX_PAGE_SCD = 4 // per page 50
-let MAX_CRAWL_DATA_SCD = 30
+let MAX_CRAWL_DATA_SCD = 25
 
 // target 'https://www.sciencedirect.com'
 async function scienceDirectCrawl(page, keyword, crawlInfo) {
@@ -726,7 +735,7 @@ async function scienceDirectCrawl(page, keyword, crawlInfo) {
 
 // ieee crawler setup
 const MAX_PAGE_IEEE = 10 // per page 10
-let MAX_CRAWL_DATA_IEEE = 25
+let MAX_CRAWL_DATA_IEEE = 20
 
 // target 'https://ieeexplore.ieee.org'
 async function ieeeCrawl(page, keyword, crawlInfo) {
@@ -736,10 +745,11 @@ async function ieeeCrawl(page, keyword, crawlInfo) {
         await Promise.all([
             page.waitForNavigation(),
             page.goto(`https://ieeexplore.ieee.org/search/searchresult.jsp?queryText=${keyword}&highlight=true&returnType=SEARCH&matchPubs=true&rowsPerPage=10&pageNumber=${crawlInfo.pageNum}&openAccess=true&refinements=ContentType:Journals${crawlInfo.date}&returnFacets=ALL`, {
-                waitUntil: 'domcontentloaded',
+                waitUntil: 'networkidle0',
                 timeout: 20000
             }),
         ])
+        console.log('done')
 
         try {
             await page.waitForSelector('.List-results-items', {
@@ -964,7 +974,7 @@ async function academicCrawl(page, keyword, crawlInfo) {
                                     timeout: 20000
                                 }),
                                 page.waitForSelector('.content-main', {
-                                    timeout: 10000
+                                    timeout: 9000
                                 }),
                             ])
                 
