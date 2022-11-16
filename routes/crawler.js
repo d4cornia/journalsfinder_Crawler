@@ -204,7 +204,7 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
     
         await browser.close()    
     }catch(e) {
-        console.log(e.name)
+        console.log(e)
         if (e.name === 'TimeoutError') {
             return {
                 'error': 'timeout',
