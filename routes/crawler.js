@@ -4,7 +4,6 @@ const firedb = require('../firebase/fire.js')
 const db = require("../connection");
 const cheerio = require('cheerio');
 const puppeteer = require('puppeteer')
-const axios = require('axios')
 const TfIdf = require('tf-idf-search');
 
 
@@ -110,6 +109,7 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
             headless: headless
         })
         const [page] = await browser.pages()
+        await page.setUserAgent("Mozilla/5.0 (X11; Linux armv7l) AppleWebKit/537.36 (KHTML, like Gecko) Raspbian Chromium/74.0.3729.157 Chrome/74.0.3729.157 Safari/537.36")
 
         // crawl bedasarkan crawl opt
         if (crawlerOpt === 0) {
@@ -370,7 +370,7 @@ async function sageCrawl(page, keyword, crawlInfo) {
     
         try {
             await page.waitForSelector('.rlist.search-result__body.items-results', {
-                timeout: 10000
+                timeout: 20000
             })
         } catch (e) {
             // empty search
@@ -409,7 +409,7 @@ async function sageCrawl(page, keyword, crawlInfo) {
                             waitUntil: 'domcontentloaded'
                         }), 
                         page.waitForSelector(".content > article", {
-                            timeout: 8000
+                            timeout: 9000
                         })
                     ])
         
@@ -542,7 +542,7 @@ const POSSIBLE_FULL_TEXT_REMOVAL = [
     'Author contributions',
     'CRediT authorship'
 ]
-const MAX_PAGE_SCD = 3 // per page 100
+const MAX_PAGE_SCD = 4 // per page 50
 let MAX_CRAWL_DATA_SCD = 30
 
 // target 'https://www.sciencedirect.com'
@@ -552,14 +552,14 @@ async function scienceDirectCrawl(page, keyword, crawlInfo) {
         
         await Promise.all([
             page.waitForNavigation(),
-            page.goto(`https://www.sciencedirect.com/search?qs=${keyword}&date=${crawlInfo.date}&accessTypes=openaccess&show=100&offset=${((crawlInfo.pageNum * 100) - 100)}`, {
+            page.goto(`https://www.sciencedirect.com/search?qs=${keyword}&date=${crawlInfo.date}&accessTypes=openaccess&show=50&offset=${((crawlInfo.pageNum * 50) - 50)}`, {
                 waitUntil: 'domcontentloaded'
             }),
         ])
     
         try {
             await page.waitForSelector('ol.search-result-wrapper > li', {
-                timeout: 5000
+                timeout: 15000
             })
         } catch (e) {
             // empty search
@@ -600,7 +600,7 @@ async function scienceDirectCrawl(page, keyword, crawlInfo) {
                                 waitUntil: 'domcontentloaded'
                             }),
                             page.waitForSelector('.Body > div > section', {
-                                timeout: 10000
+                                timeout: 5000
                             }),
                         ])
             
@@ -686,7 +686,7 @@ async function scienceDirectCrawl(page, keyword, crawlInfo) {
                         
                         if (abstract.length > 0 && fullText.length > 0) {
                             crawlInfo.search_res_links.push({
-                                index: i + ((crawlInfo.pageNum * 100) - 100),
+                                index: i + ((crawlInfo.pageNum * 50) - 50),
                                 g_id: detailJournalPath.slice(-17),
                                 title: jq(".title-text").text(),
                                 abstract: abstract,
@@ -743,7 +743,7 @@ async function ieeeCrawl(page, keyword, crawlInfo) {
 
         try {
             await page.waitForSelector('.List-results-items', {
-                timeout: 5000
+                timeout: 15000
             })
         } catch (e) {
             // empty search
@@ -782,7 +782,7 @@ async function ieeeCrawl(page, keyword, crawlInfo) {
                                 waitUntil: 'domcontentloaded'
                             }),
                             page.waitForSelector('.document-main', {
-                                timeout: 8000
+                                timeout: 9000
                             }),
                         ])
     
@@ -1266,7 +1266,7 @@ function calcCosineSimilarity (docs, docQueryTFxIDF, queryTF, mode) {
 const ALPHA = 0.1
 const PENALTY_TRESHOLD = 0.7
 // require cosine similarity first
-function journalsEvaluation (docs, cosinusKeyword, simpleKeyword, sfKeyword, searchFactors, crawlerOpt) {
+function journalsEvaluation (docs, cosinusKeyword, simpleKeyword, sfKeyword, searchFactors) {
     // sentence similarity, secara literal dengan simpleKeyword
     let maxAbsSenSim = sentenceSimilarity(docs, simpleKeyword, 1)
     let maxKeySenSim = sentenceSimilarity(docs, simpleKeyword, 2)
@@ -1335,7 +1335,6 @@ function journalsEvaluation (docs, cosinusKeyword, simpleKeyword, sfKeyword, sea
             maxAbsSenSim = sentenceSimilarity(docs, searchFactors[i].sub_factor, 1)
             maxKeySenSim = sentenceSimilarity(docs, searchFactors[i].sub_factor, 2)
             maxFtSenSim = sentenceSimilarity(docs, searchFactors[i].sub_factor, 3) 
-            console.log(maxAbsSenSim)
             for (let j = 0; j < docs.length; j++) {
                 docs[j].factorSFAbs += (docs[j].abstractSenSim / maxAbsSenSim)
                 docs[j].factorSFKey += (docs[j].keywordsSenSim / maxKeySenSim)
@@ -1544,513 +1543,5 @@ function wordSimilarity (docs, query, mode) {
 
     return max
 }
-
-// testing kma
-router.post('/kma', async (req, res) => {
-    const journals = [
-        {
-            g_id: 1,
-            abstractVal: 0.55,
-            keywordsVal: 0.32,
-            citedVal: 0.7,
-            referencesVal: 0.2,
-            fullTextVal: 0.29,
-            factor: 0.24,
-        },
-        {
-            g_id: 2,
-            abstractVal: 0.60,
-            keywordsVal: 0.54,
-            citedVal: 0.5,
-            referencesVal: 0.6,
-            fullTextVal: 0.67,
-            factor: 0.52,
-        },
-        {
-            g_id: 3,
-            abstractVal: 0.81,
-            keywordsVal: 0.9,
-            citedVal: 0.55,
-            referencesVal: 0.66,
-            fullTextVal: 0.78,
-            factor: 0.67,
-        },
-        {
-            g_id: 4,
-            abstractVal: 0.95,
-            keywordsVal: 0.88,
-            citedVal: 0.91,
-            referencesVal: 0.95,
-            fullTextVal: 0.92,
-            factor: 0.86,
-        },
-        {
-            g_id: 5,
-            abstractVal: 0.89,
-            keywordsVal: 0.92,
-            citedVal: 0.77,
-            referencesVal: 0.676,
-            fullTextVal: 0.85,
-            factor: 0.76,
-        },
-        {
-            g_id: 6,
-            abstractVal: 0.77,
-            keywordsVal: 0.45,
-            citedVal: 0.69,
-            referencesVal: 0.68,
-            fullTextVal: 0.71,
-            factor: 0.59,
-        },
-        {
-            g_id: 7,
-            abstractVal: 0.33,
-            keywordsVal: 0.15,
-            citedVal: 0.9,
-            referencesVal: 0.45,
-            fullTextVal: 0.39,
-            factor: 0.21,
-        },
-        {
-            g_id: 8,
-            abstractVal: 0.45,
-            keywordsVal: 0.17,
-            citedVal: 0.19,
-            referencesVal: 0.6,
-            fullTextVal: 0.43,
-            factor: 0.32,
-        },
-    ]
-    
-    // const journals = [
-    //     {
-    //         g_id: 1,
-    //         abstractVal: 0,
-    //         keywordsVal: 0,
-    //         citedVal: 0,
-    //         referencesVal: 0,
-    //         fullTextVal: 0,
-    //         factor: 0,
-    //     },
-    //     {
-    //         g_id: 2,
-    //         abstractVal: 0,
-    //         keywordsVal: 0,
-    //         citedVal: 0,
-    //         referencesVal: 0,
-    //         fullTextVal: 0,
-    //         factor: 0,
-    //     },
-    //     {
-    //         g_id: 3,
-    //         abstractVal: 0,
-    //         keywordsVal: 0,
-    //         citedVal: 0,
-    //         referencesVal: 0,
-    //         fullTextVal: 0,
-    //         factor: 0,
-    //     },
-    //     {
-    //         g_id: 4,
-    //         abstractVal: 0,
-    //         keywordsVal: 0,
-    //         citedVal: 0,
-    //         referencesVal: 0,
-    //         fullTextVal: 0,
-    //         factor: 0,
-    //     },
-    //     {
-    //         g_id: 5,
-    //         abstractVal: 0,
-    //         keywordsVal: 0,
-    //         citedVal: 0,
-    //         referencesVal: 0,
-    //         fullTextVal: 0,
-    //         factor: 0,
-    //     },
-    //     {
-    //         g_id: 6,
-    //         abstractVal: 0,
-    //         keywordsVal: 0,
-    //         citedVal: 0,
-    //         referencesVal: 0,
-    //         fullTextVal: 0,
-    //         factor: 0,
-    //     },
-    //     {
-    //         g_id: 7,
-    //         abstractVal: 0,
-    //         keywordsVal: 0,
-    //         citedVal: 0,
-    //         referencesVal: 0,
-    //         fullTextVal: 0,
-    //         factor: 0,
-    //     },
-    //     {
-    //         g_id: 8,
-    //         abstractVal: 0,
-    //         keywordsVal: 0,
-    //         citedVal: 0,
-    //         referencesVal: 0,
-    //         fullTextVal: 0,
-    //         factor: 0,
-    //     },
-    // ]
-
-    const results = KMA(journals, journals.length, 6, 100, 1, 1)
-
-    return res.status(200).json({
-        'init': journals,
-        'results': results,
-        'status': 'Success'
-    });
-});
-
-
-
-
-// API Testing another crawl
-router.post('/sage', async (req, res) => {
-    try{
-        let crawlInfo = {
-            search_res_links: [],
-            pageNum : 0,
-            attempt : 1,
-            yearStart: '1987',
-            yearEnd: '2022',
-            simpleKeyword: req.body.keyword
-        }
-        const browser = await puppeteer.launch({
-            'args' : [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--start-maximized',
-            ],
-            defaultViewport: null,
-            headless: true
-        })
-        const page = await browser.newPage()
-        
-        // const testcitedCount = parseInt(('asfasd asda: 123  asdf').substring(('asfasd asda: 123  asdf').indexOf(':') + 2, ('asfasd asda: 123  asdf').indexOf(' ', ('asfasd asda: 123  asdf').indexOf(':') + 2)))
-        // console.log(testcitedCount)
-        let results = await sageCrawl(page, req.body.keyword, crawlInfo)  
-
-        // await browser.close()
-
-        let cosinusKeyword = req.body.simple + " " + req.body.factors
-        cosinusKeyword.toLowerCase()
-    
-        // cosinus sim 2 after cosineSimilarity
-        journalsEvaluation(results, cosinusKeyword, req.body.simple, req.body.factors, req.body.searchFactors)
-    
-        // ranking with KMA
-        results = KMA(results, results.length, Math.ceil(results.length / 2) + 5, 100, 5, 0)
-        let finalResult = []
-        let titleOnly = []
-        for(let i = 0; i < results.length; i++) {
-            titleOnly.push(results[i].journal.title)
-            finalResult.push({
-                "index": results[i].journal.index,
-                "title": results[i].journal.title,
-                "abstractVal": results[i].journal.abstractVal,
-                "keywordsVal": results[i].journal.keywordsVal,
-                "fullTextVal": results[i].journal.fullTextVal,
-                "referencesVal": results[i].journal.referencesVal,
-                "citedVal": results[i].journal.citedVal,
-                "factorSenSim": results[i].journal.factorSenSim,
-                "factorSF": results[i].journal.factorSF,
-                "factor": results[i].journal.factor,
-                "value1": results[i].journal.value1,
-                "value2": results[i].journal.value2,
-                "value3": results[i].journal.value3,
-                "x": results[i].x,
-                "y": results[i].y,
-                "z": results[i].z,
-                "fitness": results[i].fitness,
-            })
-        }
-
-        return res.status(200).json({
-            'message': 'Crawl Berhasil!',
-            'titleOnly': titleOnly,
-            'data': {finalResult},
-            'results': {results},
-            'status': 'Success'
-        });
-    }catch(e) {
-        console.log(e)
-        return res.status(501).json({
-            'message': 'Error crawling',
-            'data':{e
-            },
-            'status': 'Error'
-        });
-    }
-});
-
-// API Testing another crawl
-router.post('/scd', async (req, res) => {
-    try{
-        let yearStart = '-'
-        let yearEnd = '-'
-        let date = ''
-        if(yearStart !== '-' && yearEnd !== '-') {
-            date = yearStart + '-' + yearEnd
-        } else if (yearStart !== '-') {
-            date = yearStart 
-        } else if (yearEnd !== '-') {
-            date = yearEnd 
-        }
-
-        let crawlInfo = {
-            search_res_links: [],
-            pageNum : 1,
-            attempt : 1,
-            date: date,
-            simpleKeyword: req.body.keyword
-        }
-        const browser = await puppeteer.launch({
-            'args' : [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--start-maximized',
-            ],
-            defaultViewport: null,
-            headless: true
-        })
-        const page = await browser.newPage()
-
-        let results = await scienceDirectCrawl(page, req.body.keyword, crawlInfo)
-
-        await browser.close()
-
-        let cosinusKeyword = req.body.simple + " " + req.body.factors
-        cosinusKeyword.toLowerCase()
-    
-        // cosinus sim 2 after cosineSimilarity
-        journalsEvaluation(results, cosinusKeyword, req.body.simple, req.body.factors, req.body.searchFactors)
-    
-        // ranking with KMA
-        results = KMA(results, results.length, Math.ceil(results.length / 2) + 5, 100, 5, 1)
-        let finalResult = []
-        let titleOnly = []
-        for(let i = 0; i < results.length; i++) {
-            titleOnly.push(results[i].journal.title)
-            finalResult.push({
-                "index": results[i].journal.index,
-                "title": results[i].journal.title,
-                "abstractVal": results[i].journal.abstractVal,
-                "keywordsVal": results[i].journal.keywordsVal,
-                "fullTextVal": results[i].journal.fullTextVal,
-                "referencesVal": results[i].journal.referencesVal,
-                "citedVal": results[i].journal.citedVal,
-                "factorSenSim": results[i].journal.factorSenSim,
-                "factorSF": results[i].journal.factorSF,
-                "factor": results[i].journal.factor,
-                "value1": results[i].journal.value1,
-                "value2": results[i].journal.value2,
-                "value3": results[i].journal.value3,
-                "x": results[i].x,
-                "y": results[i].y,
-                "z": results[i].z,
-                "fitness": results[i].fitness,
-            })
-        }
-
-        return res.status(200).json({
-            'message': 'Crawl Berhasil!',
-            'titleOnly': titleOnly,
-            'data': {finalResult},
-            'results': {results},
-            'status': 'Success'
-        });
-    }catch(e) {
-        console.log(e)
-        return res.status(501).json({
-            'message': 'Error crawling',
-            'data':{e
-            },
-            'status': 'Error'
-        });
-    }
-});
-
-// API Testing ieee
-router.post('/ieee', async (req, res) => {
-    try{
-        let keyword = req.body.keyword
-        let yearStart = '-'
-        let yearEnd = '-'
-        let date = ''
-        if(yearStart !== '-' && yearEnd !== '-') {
-            date = `&ranges=${yearStart}_${yearEnd}_Year`
-        } else if (yearStart !== '-') {
-            date = `&ranges=${yearStart}_${yearStart}_Year`
-        } else if (yearEnd !== '-') {
-            date = `&ranges=${yearEnd}_${yearEnd}_Year`
-        }
-
-        let crawlInfo = {
-            search_res_links: [],
-            pageNum : 1,
-            attempt : 1,
-            date: date,
-            simpleKeyword: req.body.simple
-        }
-        const browser = await puppeteer.launch({
-            'args' : [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--start-maximized',
-            ],
-            defaultViewport: null,
-            headless: true
-        })
-        const [page] = await browser.pages()
-        // let results = await page.goto(`https://www.sciencedirect.com/science/article/pii/S1568494621009637`)
-
-        let results = await ieeeCrawl(page, keyword, crawlInfo)
-
-        await browser.close()
-
-        let cosinusKeyword = req.body.simple + " " + req.body.factors
-        cosinusKeyword.toLowerCase()
-    
-        // cosinus sim 2 after cosineSimilarity
-        journalsEvaluation(results, cosinusKeyword, req.body.simple, req.body.factors, req.body.searchFactors)
-    
-        // ranking with KMA
-        results = KMA(results, results.length, Math.ceil(results.length / 2) + 5, 100, 5, 2)
-        let finalResult = []
-        let titleOnly = []
-        for(let i = 0; i < results.length; i++) {
-            titleOnly.push(results[i].journal.title)
-            finalResult.push({
-                "index": results[i].journal.index,
-                "title": results[i].journal.title,
-                "abstractVal": results[i].journal.abstractVal,
-                "keywordsVal": results[i].journal.keywordsVal,
-                "fullTextVal": results[i].journal.fullTextVal,
-                "referencesVal": results[i].journal.referencesVal,
-                "citedVal": results[i].journal.citedVal,
-                "factorSenSim": results[i].journal.factorSenSim,
-                "factorSF": results[i].journal.factorSF,
-                "factor": results[i].journal.factor,
-                "value1": results[i].journal.value1,
-                "value2": results[i].journal.value2,
-                "value3": results[i].journal.value3,
-                "x": results[i].x,
-                "y": results[i].y,
-                "z": results[i].z,
-                "fitness": results[i].fitness,
-            })
-        }
-
-        return res.status(200).json({
-            'message': 'Crawl Berhasil!',
-            'titleOnly': titleOnly,
-            'data': {finalResult},
-            'results': {results},
-            'status': 'Success'
-        });
-    }catch(e) {
-        console.log(e)
-        return res.status(501).json({
-            'message': 'Error crawling',
-            'data':{e
-            },
-            'status': 'Error'
-        });
-    }
-});
-
-// API Testing acd
-router.post('/acd', async (req, res) => {
-    try{
-        let keyword = 'q=' + req.body.keyword
-        let yearStart = '2021'
-        let yearEnd = '-'
-        let date = ''
-        if(yearStart !== '-' && yearEnd !== '-') {
-            date = `&rg_ArticleDate=01/01/${yearStart}%20TO%2012/31/${yearEnd}&dateFilterType=range&noDateTypes=true&rg_SearchResultsPublicationDate=01/01/${yearStart}%20TO%2012/31/${yearEnd}&rg_VersionDate=01/01/${yearStart}%20TO%2012/31/${yearEnd}`
-        } else if (yearStart !== '-') { 
-            date = `&rg_ArticleDate=01/01/${yearStart}%20TO%2012/31/2999&dateFilterType=range&noDateTypes=true&rg_SearchResultsPublicationDate=01/01/${yearStart}%20TO%2012/31/2999&rg_VersionDate=01/01/${yearStart}%20TO%2012/31/2999`
-        } else if (yearEnd !== '-') {
-            date = `&rg_ArticleDate=01/01/1980%20TO%2012/31/${yearEnd}&dateFilterType=range&noDateTypes=true&rg_SearchResultsPublicationDate=01/01/1980%20TO%2012/31/${yearEnd}&rg_VersionDate=01/01/1980%20TO%2012/31/${yearEnd}`
-        }
-        
-
-        let crawlInfo = {
-            search_res_links: [],
-            pageNum : 1,
-            attempt : 1,
-            date: date
-        }
-        const browser = await puppeteer.launch({
-            'args' : [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--start-maximized',
-            ],
-            defaultViewport: null,
-            headless: true
-        })
-        const page = await browser.newPage()
-
-        let results = await academicCrawl(page, keyword, crawlInfo)
-
-        await browser.close()
-
-        let cosinusKeyword = req.body.simple + " " + req.body.factors
-        cosinusKeyword.toLowerCase()
-    
-        // cosinus sim 2 after cosineSimilarity
-        journalsEvaluation(results, cosinusKeyword, req.body.simple, req.body.factors, req.body.searchFactors)
-    
-        // ranking with KMA
-        results = KMA(results, results.length, Math.ceil(results.length / 2) + 5, 100, 5, 2)
-        let finalResult = []
-        let titleOnly = []
-        for(let i = 0; i < results.length; i++) {
-            titleOnly.push(results[i].journal.title)
-            finalResult.push({
-                "index": results[i].journal.index,
-                "title": results[i].journal.title,
-                "abstractVal": results[i].journal.abstractVal,
-                "keywordsVal": results[i].journal.keywordsVal,
-                "fullTextVal": results[i].journal.fullTextVal,
-                "referencesVal": results[i].journal.referencesVal,
-                "citedVal": results[i].journal.citedVal,
-                "factorSenSim": results[i].journal.factorSenSim,
-                "factorSF": results[i].journal.factorSF,
-                "factor": results[i].journal.factor,
-                "value1": results[i].journal.value1,
-                "value2": results[i].journal.value2,
-                "value3": results[i].journal.value3,
-                "x": results[i].x,
-                "y": results[i].y,
-                "z": results[i].z,
-                "fitness": results[i].fitness,
-            })
-        }
-
-        return res.status(200).json({
-            'message': 'Crawl Berhasil!',
-            'titleOnly': titleOnly,
-            'data': {finalResult},
-            'results': {results},
-            'status': 'Success'
-        });
-    }catch(e) {
-        console.log(e)
-        return res.status(501).json({
-            'message': 'Error crawling',
-            'data':{e
-            },
-            'status': 'Error'
-        });
-    }
-});
-
 
 module.exports = router
