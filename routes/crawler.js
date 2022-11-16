@@ -904,7 +904,7 @@ async function ieeeCrawl(page, keyword, crawlInfo) {
 }
 
 // ACD crawler setup
-const MAX_PAGE_ACD = 10 // per page 20
+const MAX_PAGE_ACD = 7 // per page 20
 let MAX_CRAWL_DATA_ACD = 20
 
 // target 'https://academic.oup.com'
