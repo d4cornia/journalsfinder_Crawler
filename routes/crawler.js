@@ -3,7 +3,9 @@ const router = express.Router();
 const firedb = require('../firebase/fire.js')
 const db = require("../connection");
 const cheerio = require('cheerio');
-const puppeteer = require('puppeteer')
+// const puppeteer = require('puppeteer')
+const PCR = require("puppeteer-chromium-resolver");
+const stats = PCR.getStats();
 const TfIdf = require('tf-idf-search');
 
 
@@ -99,17 +101,18 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
     // Crawl 
     try{
         // setting up puppeteer
-        const browser = await puppeteer.launch({
+        const browser = await stats.puppeteer.launch({
             'args' : [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--start-maximized',
             ],
             defaultViewport: null,
-            headless: headless
+            headless: headless,
+            executablePath: stats.executablePath
         })
         const [page] = await browser.pages()
-        await page.setUserAgent("Mozilla/5.0 (X11; Linux armv7l) AppleWebKit/537.36 (KHTML, like Gecko) Raspbian Chromium/74.0.3729.157 Chrome/74.0.3729.157 Safari/537.36")
+        await page.setUserAgent("Mozilla/5.0 (X11; Linux armv7l) AppleWebKit/537.36 (KHTML, like Gecko) Raspbian Chromium/108.0.5351.0 Chrome/108.0.5351.0 Safari/537.36")
 
         // crawl bedasarkan crawl opt
         if (crawlerOpt === 0) {
