@@ -1,6 +1,5 @@
 const db = require("./connection");
 const jwt = require("jsonwebtoken");
-const CryptoJS = require("crypto-js");
 
 async function cekJWT(req, res, next) {
     if (!req.headers["x-auth-token"]) {
@@ -46,85 +45,7 @@ async function cekJWT(req, res, next) {
     next();
 }
 
-async function verifyAppMachine(req, res, next) {
-    if (!req.headers["x-app-machine-token"]) {
-        return res.status(403).json({
-            error_msg: "Unauthorized!",
-            status: 'Error'
-        });
-    }
-
-    console.log('pure : ' + req.headers["x-app-machine-token"])
-    console.log('pure2 : ' + CryptoJS.SHA3(CryptoJS.SHA3(process.env.encryption_key, { outputLength: 512 }).toString(CryptoJS.enc.Hex), { outputLength: 512 }).toString(CryptoJS.enc.Hex))
-    if(CryptoJS.SHA3
-        (CryptoJS.SHA3
-        (CryptoJS.SHA3
-        (CryptoJS.SHA3
-        (process.env.encryption_key, { outputLength: 512 }).toString(CryptoJS.enc.Hex), { outputLength: 512 }).toString(CryptoJS.enc.Hex), { outputLength: 512 }), { outputLength: 512 }).toString(CryptoJS.enc.Hex) + 'j'
-        !==
-        CryptoJS.SHA3(
-            CryptoJS.SHA3(req.headers["x-app-machine-token"], { outputLength: 512 }), { outputLength: 512 }).toString(CryptoJS.enc.Hex) + 'j') {
-        return res.status(403).json({
-            error_msg: "Unauthorized not match!",
-            status: 'Error'
-        });
-    }
-
-    next();
-}
-
-
-async function verifyCode(req, res, next) {
-    let resu = await db.query(
-        `SELECT * FROM users WHERE email='${req.body.email}'`
-    );
-    if (resu[0].verification_code == "-") {
-        return res.status(400).json({
-            message: "Request Verification code dulu!",
-            data: {},
-            status: "Error",
-        });
-    }
-    if (req.body.verification_code != resu[0].verification_code) {
-        return res.status(400).json({
-            message: "Verification code yang dimasukan salah!",
-            data: {},
-            status: "Error",
-        });
-    }
-
-    next();
-}
-
-
-async function authAdmin(req, res, next) {
-    if (req.user.status != 3) {
-        return res.status(403).json({
-            message: "Unauthorized user",
-            data: {},
-            status: "Error",
-        });
-    }
-
-    next();
-}
-
-async function authUser(req, res, next) {
-    if (req.user.status != 1) {
-        return res.status(403).json({
-            message: "Unauthorized user",
-            data: {},
-            status: "Error",
-        });
-    }
-
-    next();
-}
 
 module.exports = {
     cekJWT: cekJWT,
-    verifyAppMachine: verifyAppMachine,
-    verifyCode: verifyCode,
-    authAdmin: authAdmin,
-    authUser: authUser,
 };
