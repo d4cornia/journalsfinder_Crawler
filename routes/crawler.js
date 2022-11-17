@@ -229,6 +229,12 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
             'msg': 'Crawler Crashed, Please Try Again Later'
         }
     }
+    if (results.Error) {
+        return {
+            'error': 'origin',
+            'msg': results.Error
+        }
+    }
 
     // focused crawl (cosinus similarity)
     // cosinusKeyword = simpleKeyword + search factor
@@ -540,7 +546,7 @@ async function scienceDirectCrawl(page, keyword, crawlInfo) {
     
         try {
             await page.waitForSelector('ol.search-result-wrapper > li', {
-                timeout: 15000
+                timeout: 18000
             })
         } catch (e) {
             // empty search
@@ -584,116 +590,131 @@ async function scienceDirectCrawl(page, keyword, crawlInfo) {
                                 timeout: 5000,
                                 waitUntil: 'domcontentloaded'
                             }),
-                            page.waitForSelector('.Body > div > section', {
-                                timeout: 5000
-                            }),
                         ])
-            
-                        const body = await page.$eval(`.Article`, (result) => {
-                            return result.innerHTML
-                        })
-                        
-                        const jq = await cheerio.load(body + "")
 
-                        const tempAuthors = $(".Authors").text()
-                        let authors = tempAuthors.charAt(0)
-                        for (let i = 1; i < tempAuthors.length; i++) {
-                            if (tempAuthors.charAt(i).toUpperCase() === tempAuthors.charAt(i) && tempAuthors.charAt(i - 1) !== ' ' && tempAuthors.charAt(i) !== ' ' && tempAuthors.charAt(i - 1).toUpperCase() !== tempAuthors.charAt(i - 1)) {
-                                authors += ', '
-                            } 
-                            if (tempAuthors.charAt(i) !== "'") {
-                                authors += tempAuthors.charAt(i)
-                            } else {
-                                authors += ' '
-                            }
-                        }
-            
-                        const publishYear = $(".srctitle-date-fields").text().slice(-4)
-        
-                        const tempKey = jq(".keywords-section").text()
-                        
-                        let keywords = tempKey.charAt(0)
-                        for (let i = 1; i < tempKey.length; i++) {
-                            if (tempKey.charAt(i).toUpperCase() === tempKey.charAt(i) && tempKey.charAt(i - 1) !== ' ' && tempKey.charAt(i - 1).toUpperCase() !== tempKey.charAt(i - 1)) {
-                                keywords += ' '
-                            } 
-                            keywords += tempKey.charAt(i)
-                        }
-                        keywords = keywords.replaceAll('Keywords', '')
-                        keywords = keywords.replaceAll('(', '')
-                        keywords = keywords.replaceAll(')', '')
-                        keywords = keywords.replaceAll("'", '')
-                        keywords = keywords.replace(/\s\s+/g, ' ')
-                        
-                        const citedCount = jq("#citing-articles-header").text().substring(jq("#citing-articles-header").text().indexOf('(') + 1, jq("#citing-articles-header").text().indexOf(')'))
-            
-                        let fullText = jq("#body > div").text()
-                        let ctr = -1
-                        for (let i = 0; i < POSSIBLE_FULL_TEXT_REMOVAL.length; i++) {
-                            ctr = fullText.indexOf(POSSIBLE_FULL_TEXT_REMOVAL[i] + '')
-                            if(ctr != -1) {
-                                break
-                            }
-                        }
-                        if(ctr > 0) {
-                            fullText.length = ctr
-                        }
-        
-                        fullText = fullText.replaceAll('\n', ' ')
-                        fullText = fullText.replaceAll('\t', ' ')
-                        fullText = fullText.replaceAll(',', ' ')
-                        fullText = fullText.replaceAll('1. Introduction', '')
-                        fullText = fullText.replaceAll('.', ' ')
-                        fullText = fullText.replaceAll(':', '')
-                        fullText = fullText.replaceAll('(', '')
-                        fullText = fullText.replaceAll(')', '')
-                        fullText = fullText.replaceAll("'", '')
-                        fullText = fullText.replace(/\s\s+/g, ' ')
+                        let flag = true
     
-                        const abstract = jq(".abstract.author > div > p").text()
-                        const spl = abstract.split('.')
-                        let content = ''
-                        ctr = 0
-                        for (let i = 0; i < spl.length && ctr < 2; i++) {
-                            if(spl[i].toLowerCase().includes(crawlInfo.simpleKeyword.toLowerCase())) {
-                                ctr++ 
-                                content += '...' + spl[i]
-                            }
-                        }
-                        if (ctr == 0) {
-                            try {
-                                content = (spl[0] + '. ' + spl[1] + '. ' + spl[2])
-                            } catch (error) {
-                                content = spl[0] + '. '
-                            }
-                        }
-                        content += '...'
-                        
-                        if (abstract.length > 0 && fullText.length > 0) {
-                            crawlInfo.search_res_links.push({
-                                index: i + ((crawlInfo.pageNum * 50) - 50),
-                                g_id: detailJournalPath.slice(-17),
-                                title: jq(".title-text").text(),
-                                abstract: abstract,
-                                keywords: keywords,
-                                full_text: fullText,
-                                references_count: jq(".reference").length,
-                                content: content,
-                                cited_count: citedCount,
-                                authors: authors,
-                                publisher: 'Elsevier',
-                                publish_year: publishYear,
-                                site: 'Elsevier',
-                                free: true,
-                                link: jq(".doi").text(),
-                                pdf: pageURL.substring(0, pageURL.indexOf('/', 10)) + jq("a:contains('PDF')").attr("href"),
-                                value: 0
+                        try {
+                            await page.waitForSelector('.PdfEmbed', {
+                                timeout: 7000
                             })
+                            flag = false
+                        } catch (e) {
                         }
 
-                        // release 
-                        await page.close()
-                        page = await crawlInfo.browser.newPage()
+                        if (flag) {
+                            await page.waitForSelector('.Body > div > section', {
+                                timeout: 10000
+                            })
+
+                            const body = await page.$eval(`.Article`, (result) => {
+                                return result.innerHTML
+                            })
+                            
+                            const jq = await cheerio.load(body + "")
+    
+                            const tempAuthors = $(".Authors").text()
+                            let authors = tempAuthors.charAt(0)
+                            for (let i = 1; i < tempAuthors.length; i++) {
+                                if (tempAuthors.charAt(i).toUpperCase() === tempAuthors.charAt(i) && tempAuthors.charAt(i - 1) !== ' ' && tempAuthors.charAt(i) !== ' ' && tempAuthors.charAt(i - 1).toUpperCase() !== tempAuthors.charAt(i - 1)) {
+                                    authors += ', '
+                                } 
+                                if (tempAuthors.charAt(i) !== "'") {
+                                    authors += tempAuthors.charAt(i)
+                                } else {
+                                    authors += ' '
+                                }
+                            }
+                
+                            const publishYear = $(".srctitle-date-fields").text().slice(-4)
+            
+                            const tempKey = jq(".keywords-section").text()
+                            
+                            let keywords = tempKey.charAt(0)
+                            for (let i = 1; i < tempKey.length; i++) {
+                                if (tempKey.charAt(i).toUpperCase() === tempKey.charAt(i) && tempKey.charAt(i - 1) !== ' ' && tempKey.charAt(i - 1).toUpperCase() !== tempKey.charAt(i - 1)) {
+                                    keywords += ' '
+                                } 
+                                keywords += tempKey.charAt(i)
+                            }
+                            keywords = keywords.replaceAll('Keywords', '')
+                            keywords = keywords.replaceAll('(', '')
+                            keywords = keywords.replaceAll(')', '')
+                            keywords = keywords.replaceAll("'", '')
+                            keywords = keywords.replace(/\s\s+/g, ' ')
+                            
+                            const citedCount = jq("#citing-articles-header").text().substring(jq("#citing-articles-header").text().indexOf('(') + 1, jq("#citing-articles-header").text().indexOf(')'))
+                
+                            let fullText = jq("#body > div").text()
+                            let ctr = -1
+                            for (let i = 0; i < POSSIBLE_FULL_TEXT_REMOVAL.length; i++) {
+                                ctr = fullText.indexOf(POSSIBLE_FULL_TEXT_REMOVAL[i] + '')
+                                if(ctr != -1) {
+                                    break
+                                }
+                            }
+                            if(ctr > 0) {
+                                fullText.length = ctr
+                            }
+            
+                            fullText = fullText.replaceAll('\n', ' ')
+                            fullText = fullText.replaceAll('\t', ' ')
+                            fullText = fullText.replaceAll(',', ' ')
+                            fullText = fullText.replaceAll('1. Introduction', '')
+                            fullText = fullText.replaceAll('.', ' ')
+                            fullText = fullText.replaceAll(':', '')
+                            fullText = fullText.replaceAll('(', '')
+                            fullText = fullText.replaceAll(')', '')
+                            fullText = fullText.replaceAll("'", '')
+                            fullText = fullText.replace(/\s\s+/g, ' ')
+        
+                            const abstract = jq(".abstract.author > div > p").text()
+                            const spl = abstract.split('.')
+                            let content = ''
+                            ctr = 0
+                            for (let i = 0; i < spl.length && ctr < 2; i++) {
+                                if(spl[i].toLowerCase().includes(crawlInfo.simpleKeyword.toLowerCase())) {
+                                    ctr++ 
+                                    content += '...' + spl[i]
+                                }
+                            }
+                            if (ctr == 0) {
+                                try {
+                                    content = (spl[0] + '. ' + spl[1] + '. ' + spl[2])
+                                } catch (error) {
+                                    content = spl[0] + '. '
+                                }
+                            }
+                            content += '...'
+                            
+                            if (abstract.length > 0 && fullText.length > 0) {
+                                crawlInfo.search_res_links.push({
+                                    index: i + ((crawlInfo.pageNum * 50) - 50),
+                                    g_id: detailJournalPath.slice(-17),
+                                    title: jq(".title-text").text(),
+                                    abstract: abstract,
+                                    keywords: keywords,
+                                    full_text: fullText,
+                                    references_count: jq(".reference").length,
+                                    content: content,
+                                    cited_count: citedCount,
+                                    authors: authors,
+                                    publisher: 'Elsevier',
+                                    publish_year: publishYear,
+                                    site: 'Elsevier',
+                                    free: true,
+                                    link: jq(".doi").text(),
+                                    pdf: pageURL.substring(0, pageURL.indexOf('/', 10)) + jq("a:contains('PDF')").attr("href"),
+                                    value: 0
+                                })
+                            }
+    
+                            // release 
+                            await page.close()
+                            page = await crawlInfo.browser.newPage()
+                        } else {
+                            console.log('embed')
+                        }
                     } catch (error) {
                         console.log("error obtaining journal info i-" + (i + 1))
                         console.log(error)
@@ -731,11 +752,24 @@ async function ieeeCrawl(page, keyword, crawlInfo) {
         ])
 
         try {
+            await page.waitForSelector('.body-shutpage', {
+                timeout: 6000
+            })
+
+            return {
+                'Error': 'IEEE Website is temporarily down'
+            }
+        } catch (e) {
+            console.log('not down')
+        }
+
+        try {
             await page.waitForSelector('.List-results-items', {
-                timeout: 15000
+                timeout: 20000
             })
         } catch (e) {
             // empty search
+            console.log('timeout')
             return crawlInfo.search_res_links
         }
 
