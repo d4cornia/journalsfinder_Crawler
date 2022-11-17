@@ -19,7 +19,6 @@
     "firebase-admin": "^10.3.0",
     "jsonwebtoken": "^8.5.1",
     "mathjs": "^11.2.1",
-    "mysql": "^2.18.1",
     "mysql2": "^2.3.3",
     "puppeteer": "^18.2.1",
     "tf-idf-search": "^1.1.3",
