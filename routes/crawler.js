@@ -178,7 +178,8 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
                 pageNum : 1,
                 attempt : 1,
                 date: date,
-                simpleKeyword: simpleKeyword
+                simpleKeyword: simpleKeyword,
+                browser: browser
             }
 
             results = await ieeeCrawl(page, keyword, crawlInfo)
@@ -317,46 +318,6 @@ async function addJournalsResult (req, userLogId, results, factors) {
         });
     }
 }
-
-// dapetin semua journals result dengan user_log_id yang diminta
-router.post('/searchResult', cekJWT, async (req, res) => {
-    if(req.body.userLogId){
-        let hasil = []
-        let query = await firedb.collection('journals_result')
-        query = query.where('user_log_id', '==', req.body.userLogId).orderBy('rank')
-        const resu = await query.get()
-        
-        resu.forEach((doc) => {
-            hasil.push(doc.data())
-        });
-
-        // cek pernah ga search result ini diarchive oleh user, Jika ya simpan data id journal
-        const data = await db.query(`SELECT * FROM journals WHERE user_id=${req.user.id} AND STATUS=1 AND deleted_at IS NULL`)
-        for (let i = 0; i < hasil.length; i++) {
-            hasil[i].journal_id = -1
-            for (let j = 0; j < data.length; j++) {
-                if (hasil[i].g_id === data[j].g_id) {
-                    // pernah
-                    hasil[i].journal_id = data[j].id
-                    break
-                }
-            }
-        }
-
-        return res.status(200).json({
-            'message': 'Query Success',
-            hasil,
-            'status': 'Success'
-        });
-    }else{
-        return res.status(400).json({
-            'message': 'Inputan Belum lengkap!',
-            'data':{
-            },
-            'status': 'Error'
-        });
-    }
-});
 
 
 const MAX_RESET = 4
@@ -749,7 +710,6 @@ async function ieeeCrawl(page, keyword, crawlInfo) {
                 timeout: 20000
             }),
         ])
-        console.log('done')
 
         try {
             await page.waitForSelector('.List-results-items', {
@@ -772,6 +732,10 @@ async function ieeeCrawl(page, keyword, crawlInfo) {
                 }
                 return temp
             })
+
+            // release 
+            await page.close()
+            page = await crawlInfo.browser.newPage()
 
             for (let i = 0; i < searchResRaw.length; i++) {
                 if (crawlInfo.search_res_links.length === MAX_CRAWL_DATA_IEEE) {
@@ -894,6 +858,10 @@ async function ieeeCrawl(page, keyword, crawlInfo) {
                                 value: 0
                             })
                         }
+
+                        // release 
+                        await page.close()
+                        page = await crawlInfo.browser.newPage()
                     } catch (e) {
                         console.log('error load detail : ' + (i + 1))
                         console.log(e)
