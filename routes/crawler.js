@@ -138,7 +138,8 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
                 attempt : 1,
                 yearStart: yearStart,
                 yearEnd: yearEnd,
-                simpleKeyword: simpleKeyword
+                simpleKeyword: simpleKeyword,
+                browser: browser
             }
     
             results = await sageCrawl(page, keyword, crawlInfo)  
@@ -158,7 +159,8 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
                 pageNum : 1,
                 attempt : 1,
                 date: date,
-                simpleKeyword: simpleKeyword
+                simpleKeyword: simpleKeyword,
+                browser: browser
             }
     
             results = await scienceDirectCrawl(page, keyword, crawlInfo)  
@@ -206,7 +208,8 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
                 search_res_links: [],
                 pageNum : 1,
                 attempt : 1,
-                date: date
+                date: date,
+                browser: browser
             }
 
             results = await academicCrawl(page, keyword, crawlInfo)
@@ -359,6 +362,10 @@ async function sageCrawl(page, keyword, crawlInfo) {
                 }
                 return temp
             })
+            
+            // release 
+            await page.close()
+            page = await crawlInfo.browser.newPage()
 
             for (let i = 0; i < searchResRaw.length; i++) {
                 console.log('sage length : ' + crawlInfo.search_res_links.length)
@@ -487,6 +494,10 @@ async function sageCrawl(page, keyword, crawlInfo) {
                             keywords: keywords,
                         })
                     }
+                    
+                    // release 
+                    await page.close()
+                    page = await crawlInfo.browser.newPage()
                 } catch (error) {
                     console.log("error obtaining journal info i-" + (i + 1))
                     console.log(error)
@@ -548,6 +559,10 @@ async function scienceDirectCrawl(page, keyword, crawlInfo) {
                 }
                 return temp
             })
+
+            // release 
+            await page.close()
+            page = await crawlInfo.browser.newPage()
 
             for (let i = 0; i < searchResRaw.length; i++) {
                 if (crawlInfo.search_res_links.length === MAX_CRAWL_DATA_SCD) {
@@ -675,6 +690,10 @@ async function scienceDirectCrawl(page, keyword, crawlInfo) {
                                 value: 0
                             })
                         }
+
+                        // release 
+                        await page.close()
+                        page = await crawlInfo.browser.newPage()
                     } catch (error) {
                         console.log("error obtaining journal info i-" + (i + 1))
                         console.log(error)
@@ -917,6 +936,10 @@ async function academicCrawl(page, keyword, crawlInfo) {
                     }
                     return temp
                 })
+
+                // release 
+                await page.close()
+                page = await crawlInfo.browser.newPage()
                 
                 if (searchResRaw.length === 0) {
                     // empty search
@@ -1018,6 +1041,10 @@ async function academicCrawl(page, keyword, crawlInfo) {
                                     })
                                 }
                             }
+
+                            // release 
+                            await page.close()
+                            page = await crawlInfo.browser.newPage()
                         }catch (e) {
                             console.log('error load detail : ' + (i + 1))
                             console.log(e)
