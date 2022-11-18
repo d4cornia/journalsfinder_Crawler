@@ -324,7 +324,6 @@ function femaleBehavior (female, bigMale) {
             newOffspring2.journal = female.journal
             return newOffspring2
         }
-        return female
     } else {
         // parthenogenesis 
         let newFemale = {
@@ -366,9 +365,9 @@ function femaleBehavior (female, bigMale) {
         if (newFemale.fitness < female.fitness) {
             return newFemale
         }
-
-        return female
     }
+
+    return female
 }
 
 function smallKomodoBehavior (smallMales, bigMales) {
