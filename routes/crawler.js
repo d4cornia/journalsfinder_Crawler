@@ -333,7 +333,7 @@ const MAX_RESET = 4
 
 // sage crawler setup
 const MAX_PAGE_SAGE = 3 // per page 100
-let MAX_CRAWL_DATA_SAGE = 25
+let MAX_CRAWL_DATA_SAGE = 20
 
 // target 'https://journals.sagepub.com'
 async function sageCrawl(page, keyword, crawlInfo) {
@@ -368,10 +368,6 @@ async function sageCrawl(page, keyword, crawlInfo) {
                 }
                 return temp
             })
-            
-            // release 
-            await page.close()
-            page = await crawlInfo.browser.newPage()
 
             for (let i = 0; i < searchResRaw.length; i++) {
                 console.log('sage length : ' + crawlInfo.search_res_links.length)
@@ -500,10 +496,6 @@ async function sageCrawl(page, keyword, crawlInfo) {
                             keywords: keywords,
                         })
                     }
-                    
-                    // release 
-                    await page.close()
-                    page = await crawlInfo.browser.newPage()
                 } catch (error) {
                     console.log("error obtaining journal info i-" + (i + 1))
                     console.log(error)
@@ -530,7 +522,7 @@ const POSSIBLE_FULL_TEXT_REMOVAL = [
     'CRediT authorship'
 ]
 const MAX_PAGE_SCD = 4 // per page 50
-let MAX_CRAWL_DATA_SCD = 25
+let MAX_CRAWL_DATA_SCD = 20
 
 // target 'https://www.sciencedirect.com'
 async function scienceDirectCrawl(page, keyword, crawlInfo) {
@@ -565,10 +557,6 @@ async function scienceDirectCrawl(page, keyword, crawlInfo) {
                 }
                 return temp
             })
-
-            // release 
-            await page.close()
-            page = await crawlInfo.browser.newPage()
 
             for (let i = 0; i < searchResRaw.length; i++) {
                 if (crawlInfo.search_res_links.length === MAX_CRAWL_DATA_SCD) {
@@ -708,10 +696,6 @@ async function scienceDirectCrawl(page, keyword, crawlInfo) {
                                     value: 0
                                 })
                             }
-    
-                            // release 
-                            await page.close()
-                            page = await crawlInfo.browser.newPage()
                         } else {
                             console.log('embed')
                         }
@@ -736,7 +720,7 @@ async function scienceDirectCrawl(page, keyword, crawlInfo) {
 
 // ieee crawler setup
 const MAX_PAGE_IEEE = 10 // per page 10
-let MAX_CRAWL_DATA_IEEE = 20
+let MAX_CRAWL_DATA_IEEE = 16
 
 // target 'https://ieeexplore.ieee.org'
 async function ieeeCrawl(page, keyword, crawlInfo) {
@@ -785,10 +769,6 @@ async function ieeeCrawl(page, keyword, crawlInfo) {
                 }
                 return temp
             })
-
-            // release 
-            await page.close()
-            page = await crawlInfo.browser.newPage()
 
             for (let i = 0; i < searchResRaw.length; i++) {
                 if (crawlInfo.search_res_links.length === MAX_CRAWL_DATA_IEEE) {
@@ -911,10 +891,6 @@ async function ieeeCrawl(page, keyword, crawlInfo) {
                                 value: 0
                             })
                         }
-
-                        // release 
-                        await page.close()
-                        page = await crawlInfo.browser.newPage()
                     } catch (e) {
                         console.log('error load detail : ' + (i + 1))
                         console.log(e)
@@ -936,7 +912,7 @@ async function ieeeCrawl(page, keyword, crawlInfo) {
 
 // ACD crawler setup
 const MAX_PAGE_ACD = 7 // per page 20
-let MAX_CRAWL_DATA_ACD = 20
+let MAX_CRAWL_DATA_ACD = 16
 
 // target 'https://academic.oup.com'
 async function academicCrawl(page, keyword, crawlInfo) {
@@ -970,10 +946,6 @@ async function academicCrawl(page, keyword, crawlInfo) {
                     }
                     return temp
                 })
-
-                // release 
-                await page.close()
-                page = await crawlInfo.browser.newPage()
                 
                 if (searchResRaw.length === 0) {
                     // empty search
@@ -1075,10 +1047,6 @@ async function academicCrawl(page, keyword, crawlInfo) {
                                     })
                                 }
                             }
-
-                            // release 
-                            await page.close()
-                            page = await crawlInfo.browser.newPage()
                         }catch (e) {
                             console.log('error load detail : ' + (i + 1))
                             console.log(e)
@@ -1302,7 +1270,7 @@ function calcCosineSimilarity (docs, docQueryTFxIDF, queryTF, mode) {
     }
 }
 
-const ALPHA = 0.1
+const ALPHA = 0.2
 const PENALTY_TRESHOLD = 0.7
 // require cosine similarity first
 function journalsEvaluation (docs, cosinusKeyword, simpleKeyword, sfKeyword, searchFactors) {

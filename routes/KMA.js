@@ -4,7 +4,7 @@ const MLIPIR_RATE = (Nvar - 1) / Nvar * 1.0
 const ALPHA = 0.5
 const ALPHA_RADIUS = 0.1
 const PORTION = 0.5
-const MAX_GEN = 200
+const MAX_GEN = 300
 const MAX_IMPROVEMENT = 30
 const MAX_GEN_IMPROVE = 3
 const MAX_GEN_STAGNAN = 6
@@ -51,9 +51,9 @@ function KMA (journals, initPop, minPop, maxPop, initIncDecAdaPop, crawlerOpt) {
             journals[i].value3 = ((journals[i].keywordsVal * 0.4) + (journals[i].citedVal * 0.6)) * OFFSET
         } else {
             // scd & ieee & sage
-            journals[i].value1 = ((journals[i].abstractVal * 0.9) + (journals[i].referencesVal * 0.1)) * OFFSET
+            journals[i].value1 = journals[i].abstractVal * OFFSET
             journals[i].value2 = journals[i].fullTextVal * OFFSET
-            journals[i].value3 = ((journals[i].citedVal * 0.4) + (journals[i].keywordsVal * 0.6)) * OFFSET
+            journals[i].value3 = ((journals[i].citedVal * 0.4) + (journals[i].keywordsVal * 0.8) + (journals[i].referencesVal * 0.1)) * OFFSET
         }
 
         // push
