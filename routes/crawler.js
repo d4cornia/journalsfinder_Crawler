@@ -142,7 +142,7 @@ async function crawlAndRank (keyword, ogKeyword, searchFactors = [], headless, y
                 browser: browser
             }
     
-            results = await sageCrawl(page, keyword, crawlInfo)  
+            results = await sageCrawl(browser, page, keyword, crawlInfo)  
         } else if (crawlerOpt === 1) {
             // crawler SCD
             let date = ''

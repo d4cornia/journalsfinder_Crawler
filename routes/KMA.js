@@ -46,9 +46,9 @@ function KMA (journals, initPop, minPop, maxPop, initIncDecAdaPop, crawlerOpt) {
         // menentukan value1, value2, dan value3
         if (crawlerOpt === 3) {
             // acd
-            journals[i].value1 = ((journals[i].abstractVal * 0.9) + (journals[i].referencesVal * 0.1)) * OFFSET
+            journals[i].value1 = journals[i].abstractVal * OFFSET
             journals[i].value2 = journals[i].fullTextVal * OFFSET
-            journals[i].value3 = ((journals[i].keywordsVal * 0.4) + (journals[i].citedVal * 0.6)) * OFFSET
+            journals[i].value3 = ((journals[i].citedVal * 0.6) + (journals[i].keywordsVal * 0.5) + (journals[i].referencesVal * 0.3)) * OFFSET
         } else {
             // scd & ieee & sage
             journals[i].value1 = journals[i].abstractVal * OFFSET
