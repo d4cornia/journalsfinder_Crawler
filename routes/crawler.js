@@ -336,7 +336,7 @@ const MAX_PAGE_SAGE = 3 // per page 100
 let MAX_CRAWL_DATA_SAGE = 20
 
 // target 'https://journals.sagepub.com'
-async function sageCrawl(page, keyword, crawlInfo) {
+async function sageCrawl(browser, page, keyword, crawlInfo) {
     while (crawlInfo.pageNum < MAX_PAGE_SAGE && crawlInfo.attempt < MAX_RESET) {
         console.log("Page num : " + crawlInfo.pageNum)
         
@@ -378,17 +378,41 @@ async function sageCrawl(page, keyword, crawlInfo) {
         
                 const detailJournalPath = $("a.sage-search-title").attr("href")
                 console.log(detailJournalPath)
+
+                await browser.close()
+                browser = await puppeteer.launch({
+                    'args' : [
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--start-maximized',
+                    ],
+                    defaultViewport: null,
+                    headless: true
+                })
+                page = await browser.newPage() 
+                await page.setUserAgent("Mozilla/5.0 (X11; Linux armv7l) AppleWebKit/537.36 (KHTML, like Gecko) Raspbian Chromium/74.0.3729.157 Chrome/74.0.3729.157 Safari/537.36")
             
+                await page.setRequestInterception(true)
+                page.on('request', (req) => {
+                    if(req.resourceType() == 'stylesheet' || req.resourceType() == 'font'){
+                        req.abort();
+                    }
+                    else {
+                        req.continue();
+                    }
+                })
+
                 // obtaining journal info detail
                 try {
                     // masuk ke detail journal
                     await Promise.all([
                         page.waitForNavigation(),
                         page.goto(pageURL.substring(0, pageURL.indexOf('/', 10)) + detailJournalPath, {
-                            waitUntil: 'domcontentloaded'
+                            waitUntil: 'domcontentloaded',
+                            timeout: 15000
                         }), 
                         page.waitForSelector(".content > article", {
-                            timeout: 9000
+                            timeout: 5000
                         })
                     ])
         
