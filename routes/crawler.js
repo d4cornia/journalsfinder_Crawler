@@ -321,6 +321,12 @@ async function addJournalsResult (req, userLogId, results, factors) {
             pdf: results[i].journal.pdf,
             site: results[i].journal.site,
             cited_count: results[i].journal.cited_count,
+            absVal: results[i].journal.abstractVal,
+            keyVal: results[i].journal.keywordsVal,
+            ftVal: results[i].journal.fullTextVal,
+            citedVal: results[i].journal.citedVal,
+            refVal: results[i].journal.referencesVal,
+            fitness: results[i].fitness,
             status: 1,
             created_at: new Date(),
             deleted_at: null
@@ -1113,13 +1119,17 @@ function cosineSimilarity(docs, query, mode = 1) {
     for (let i = 0; i < docs.length; i++) {
         let words = '-'
         if (mode == 1) {
-            docs[i].abstract.toLowerCase()
+            docs[i].abstract = docs[i].abstract.toLowerCase()
+            docs[i].abstract = docs[i].abstract.replaceAll('.', '')
+            console.log(docs[i].abstract)
             words = docs[i].abstract.split(" ")
         } else if (mode == 2) {
-            docs[i].keywords.toLowerCase()
+            docs[i].keywords = docs[i].keywords.toLowerCase()
+            docs[i].keywords = docs[i].keywords.replaceAll('.', '')
             words = docs[i].keywords.split(" ")
         } else if (mode == 3) {
-            docs[i].full_text.toLowerCase()
+            docs[i].full_text = docs[i].full_text.toLowerCase()
+            docs[i].full_text = docs[i].full_text.replaceAll('.', '')
             words = docs[i].full_text.split(" ")
         }
         const res = []
@@ -1294,7 +1304,7 @@ function calcCosineSimilarity (docs, docQueryTFxIDF, queryTF, mode) {
     }
 }
 
-const ALPHA = 0.2
+const ALPHA = 0.3
 const PENALTY_TRESHOLD = 0.7
 // require cosine similarity first
 function journalsEvaluation (docs, cosinusKeyword, simpleKeyword, sfKeyword, searchFactors) {
@@ -1312,9 +1322,15 @@ function journalsEvaluation (docs, cosinusKeyword, simpleKeyword, sfKeyword, sea
         docs[i].factorSFAbs = 0
         docs[i].factorSFKey = 0
         docs[i].factorSFFt = 0
-        abstracts.push(docs[i].abstract)
-        keywords.push(docs[i].keywords)
-        fullTexts.push(docs[i].full_text)
+        let temp = docs[i].abstract.toLowerCase()
+        temp = temp.replaceAll('.', '')
+        abstracts.push(temp)
+        temp = docs[i].keywords.toLowerCase()
+        temp = temp.replaceAll('.', '')
+        keywords.push(temp)
+        temp = docs[i].full_text.toLowerCase()
+        temp = temp.replaceAll('.', '')
+        fullTexts.push(temp)
 
         if(docs[i].references_count > maxRef){
             maxRef = docs[i].references_count
@@ -1574,5 +1590,324 @@ function wordSimilarity (docs, query, mode) {
 
     return max
 }
+
+// API Testing another crawl
+router.post('/scd', async (req, res) => {
+    try{
+        let yearStart = '-'
+        let yearEnd = '-'
+        let date = ''
+        if(yearStart !== '-' && yearEnd !== '-') {
+            date = yearStart + '-' + yearEnd
+        } else if (yearStart !== '-') {
+            date = yearStart 
+        } else if (yearEnd !== '-') {
+            date = yearEnd 
+        }
+
+        let crawlInfo = {
+            search_res_links: [],
+            pageNum : 1,
+            attempt : 1,
+            date: date,
+            simpleKeyword: req.body.keyword
+        }
+        const browser = await puppeteer.launch({
+            'args' : [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--start-maximized',
+            ],
+            defaultViewport: null,
+            headless: true
+        })
+        const page = await browser.newPage()
+        await page.setUserAgent("Mozilla/5.0 (X11; Linux armv7l) AppleWebKit/537.36 (KHTML, like Gecko) Raspbian Chromium/108.0.5351.0 Chrome/108.0.5351.0 Safari/537.36")
+        let results = ''
+        
+        await page.setRequestInterception(true)
+        page.on('request', (req) => {
+            if(req.resourceType() == 'stylesheet' || req.resourceType() == 'font' || req.resourceType() == 'image'){
+                req.abort();
+            }
+            else {
+                req.continue();
+            }
+        })
+        try { 
+            results = await scienceDirectCrawl(page, req.body.keyword, crawlInfo)
+        }catch(e) {
+            console.log( e)
+        }
+
+        await browser.close()
+
+        let cosinusKeyword = req.body.simple + " " + req.body.factors
+        cosinusKeyword.toLowerCase()
+    
+        // cosinus sim 2 after cosineSimilarity
+        journalsEvaluation(results, cosinusKeyword, req.body.simple, req.body.factors, req.body.searchFactors)
+    
+        // ranking with KMA
+        results = KMA(results, results.length, Math.ceil(results.length / 2) + 5, 100, 5, 1)
+        let finalResult = []
+        let titleOnly = []
+        for(let i = 0; i < results.length; i++) {
+            titleOnly.push(results[i].journal.title)
+            finalResult.push({
+                "index": results[i].journal.index,
+                "title": results[i].journal.title,
+                "abstractVal": results[i].journal.abstractVal,
+                "keywordsVal": results[i].journal.keywordsVal,
+                "fullTextVal": results[i].journal.fullTextVal,
+                "referencesVal": results[i].journal.referencesVal,
+                "citedVal": results[i].journal.citedVal,
+                "factorSenSim": results[i].journal.factorSenSim,
+                "factorSF": results[i].journal.factorSF,
+                "factor": results[i].journal.factor,
+                "value1": results[i].journal.value1,
+                "value2": results[i].journal.value2,
+                "value3": results[i].journal.value3,
+                "x": results[i].x,
+                "y": results[i].y,
+                "z": results[i].z,
+                "fitness": results[i].fitness,
+            })
+        }
+
+        return res.status(200).json({
+            'message': 'Crawl Berhasil!',
+            'titleOnly': titleOnly,
+            'data': {finalResult},
+            'results': {results},
+            'status': 'Success'
+        });
+    }catch(e) {
+        console.log(e)
+        return res.status(501).json({
+            'message': 'Error crawling',
+            'data':{e
+            },
+            'status': 'Error'
+        });
+    }
+});
+
+// testing kma
+router.post('/kma', async (req, res) => {
+    const journals = [
+        {
+            g_id: 1,
+            abstractVal: 0.42,
+            keywordsVal: 0.59,
+            fullTextVal: 0.29,
+            citedVal: 0.31,
+            referencesVal: 0.19,
+            factor: 0.33,
+        },
+        {
+            g_id: 2,
+            abstractVal: 0.60,
+            keywordsVal: 0.54,
+            fullTextVal: 0.67,
+            citedVal: 0.5,
+            referencesVal: 0.6,
+            factor: 0.52,
+        },
+        {
+            g_id: 3,
+            abstractVal: 0.45,
+            keywordsVal: 0.27,
+            fullTextVal: 0.56,
+            citedVal: 0.23,
+            referencesVal: 0.31,
+            factor: 0.59,
+        },
+        {
+            g_id: 4,
+            abstractVal: 0.64,
+            keywordsVal: 0.59,
+            fullTextVal: 0.65,
+            citedVal: 1,
+            referencesVal: 1,
+            factor: 0.7,
+        },
+        {
+            g_id: 5,
+            abstractVal: 0.59,
+            keywordsVal: 0.61,
+            fullTextVal: 0.62,
+            citedVal: 0.59,
+            referencesVal: 0.67,
+            factor: 0.64,
+        },
+        {
+            g_id: 6,
+            abstractVal: 0.58,
+            keywordsVal: 0.48,
+            fullTextVal: 0.71,
+            citedVal: 0.25,
+            referencesVal: 0.33,
+            factor: 0.49,
+        },
+        {
+            g_id: 7,
+            abstractVal: 0.63,
+            keywordsVal: 0.19,
+            fullTextVal: 0.62,
+            citedVal: 0.1,
+            referencesVal: 0.31,
+            factor: 0.52,
+        },
+        {
+            g_id: 8,
+            abstractVal: 0.39,
+            keywordsVal: 0.21,
+            fullTextVal: 0.36,
+            citedVal: 0.19,
+            referencesVal: 0.11,
+            factor: 0.27,
+        },
+        {
+            g_id: 9,
+            abstractVal: 0.52,
+            keywordsVal: 0.23,
+            fullTextVal: 0.48,
+            citedVal: 0.29,
+            referencesVal: 0.25,
+            factor: 0.43,
+        },
+        {
+            g_id: 10,
+            abstractVal: 0.51,
+            keywordsVal: 0.39,
+            fullTextVal: 0.59,
+            citedVal: 0.66,
+            referencesVal: 0.61,
+            factor: 0.55,
+        },
+    ]
+    
+    // const journals = [
+    //     {
+    //         g_id: 1,
+    //         abstractVal: 0,
+    //         keywordsVal: 0,
+    //         citedVal: 0,
+    //         referencesVal: 0,
+    //         fullTextVal: 0,
+    //         factor: 0,
+    //     },
+    //     {
+    //         g_id: 2,
+    //         abstractVal: 0,
+    //         keywordsVal: 0,
+    //         citedVal: 0,
+    //         referencesVal: 0,
+    //         fullTextVal: 0,
+    //         factor: 0,
+    //     },
+    //     {
+    //         g_id: 3,
+    //         abstractVal: 0,
+    //         keywordsVal: 0,
+    //         citedVal: 0,
+    //         referencesVal: 0,
+    //         fullTextVal: 0,
+    //         factor: 0,
+    //     },
+    //     {
+    //         g_id: 4,
+    //         abstractVal: 0,
+    //         keywordsVal: 0,
+    //         citedVal: 0,
+    //         referencesVal: 0,
+    //         fullTextVal: 0,
+    //         factor: 0,
+    //     },
+    //     {
+    //         g_id: 5,
+    //         abstractVal: 0,
+    //         keywordsVal: 0,
+    //         citedVal: 0,
+    //         referencesVal: 0,
+    //         fullTextVal: 0,
+    //         factor: 0,
+    //     },
+    //     {
+    //         g_id: 6,
+    //         abstractVal: 0,
+    //         keywordsVal: 0,
+    //         citedVal: 0,
+    //         referencesVal: 0,
+    //         fullTextVal: 0,
+    //         factor: 0,
+    //     },
+    //     {
+    //         g_id: 7,
+    //         abstractVal: 0,
+    //         keywordsVal: 0,
+    //         citedVal: 0,
+    //         referencesVal: 0,
+    //         fullTextVal: 0,
+    //         factor: 0,
+    //     },
+    //     {
+    //         g_id: 8,
+    //         abstractVal: 0,
+    //         keywordsVal: 0,
+    //         citedVal: 0,
+    //         referencesVal: 0,
+    //         fullTextVal: 0,
+    //         factor: 0,
+    //     },
+    //     {
+    //         g_id: 9,
+    //         abstractVal: 0,
+    //         keywordsVal: 0,
+    //         citedVal: 0,
+    //         referencesVal: 0,
+    //         fullTextVal: 0,
+    //         factor: 0,
+    //     },
+    //     {
+    //         g_id: 10,
+    //         abstractVal: 0,
+    //         keywordsVal: 0,
+    //         citedVal: 0,
+    //         referencesVal: 0,
+    //         fullTextVal: 0,
+    //         factor: 0,
+    //     },
+    // ]
+
+    const results = KMA(journals, journals.length, 6, 100, 1, 1)
+
+    const doc = [
+        {
+            id: 1,
+            abstract: "The extensive growth of data in the health domain has increased the utility of Deep Learning in health. Deep learning is a highly advanced successor of artificial neural networks, having powerful computing ability. Due to the availability of fast data storage and hardware parallelism its popularity grows in the last five years. This in article presents a comprehensive literature review of research deploying deep learning medical imaging and medical NLP including tasks, pipelines, and challenges. In this work, we have presented an extensive survey of deep learning architecture deployed in the fields of medical imaging and medical natural language processing. This paper helps in identifying suitable combination of Deep learning, Natural language processing and medical imaging to enhance diagnosis. We have highlighted the major challenges in deploying deep learning in medical imaging and medical natural language processing. All the results are presented in pictorial form. This survey is very helpful for novices working in the area of health informatics."
+        }
+    ]
+    let abstracts = [
+        "The extensive growth of data in the health domain has increased the utility of Deep Learning in health. Deep learning is a highly advanced successor of artificial neural networks, having powerful computing ability. Due to the availability of fast data storage and hardware parallelism its popularity grows in the last five years. This in article presents a comprehensive literature review of research deploying deep learning medical imaging and medical NLP including tasks, pipelines, and challenges. In this work, we have presented an extensive survey of deep learning architecture deployed in the fields of medical imaging and medical natural language processing. This paper helps in identifying suitable combination of Deep learning, Natural language processing and medical imaging to enhance diagnosis. We have highlighted the major challenges in deploying deep learning in medical imaging and medical natural language processing. All the results are presented in pictorial form. This survey is very helpful for novices working in the area of health informatics."
+    ]
+    abstracts[0] = abstracts[0].replaceAll('.', '')
+    abstracts[0] = abstracts[0].toLowerCase()
+    let maxAbsSenSim = sentenceSimilarity(doc, "natural language processing", 1)
+    // cosineSimilarity(doc, "natural language processing medical disease biomedical", 1)
+    const maxAbsWordSim = wordSimilarity(doc, "medical biomedical disease", 1)
+    let tf_idf_abs = new TfIdf()
+    tf_idf_abs.createCorpusFromStringArray(abstracts)
+    let search_result = tf_idf_abs.rankDocumentsByQuery("natural language processing medical disease biomedical")
+
+    return res.status(200).json({
+        doc,
+        search_result,
+        'init': journals,
+        'results': results,
+        'status': 'Success'
+    });
+});
 
 module.exports = router
